@@ -99,6 +99,7 @@ export async function GET(request: Request) {
     }
 
     const estimates = JSON.parse(estimateText);
+
     const estimate = Array.isArray(estimates)
       ? estimates[0]
       : null;
@@ -173,27 +174,134 @@ export async function GET(request: Request) {
         : null;
     }
 
-    const shouldFollowUp =
-      estimate.status === "sent";
+    // --------------------------------------------------
+    // LOAD ORGANIZATION / BUSINESS NAME
+    // --------------------------------------------------
 
-    console.log("Estimate loaded:", estimate.id);
-    console.log("Estimate status:", estimate.status);
-    console.log("Customer loaded:", customer?.id || null);
-    console.log("Should follow up:", shouldFollowUp);
+    const organizationUrl = new URL(
+      `${supabaseUrl}/rest/v1/organizations`
+    );
+
+    organizationUrl.searchParams.set(
+      "id",
+      `eq.${organizationId}`
+    );
+
+    organizationUrl.searchParams.set(
+      "select",
+      "id,name"
+    );
+
+    organizationUrl.searchParams.set(
+      "limit",
+      "1"
+    );
+
+    const organizationResponse = await fetch(
+      organizationUrl.toString(),
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }
+    );
+
+    const organizationText =
+      await organizationResponse.text();
+
+    if (!organizationResponse.ok) {
+      console.error(
+        "Organization lookup failed:",
+        organizationText
+      );
+
+      return NextResponse.json(
+        {
+          error: "Unable to load business information.",
+          details: organizationText,
+        },
+        { status: 500 }
+      );
+    }
+
+    const organizations = JSON.parse(
+      organizationText
+    );
+
+    const organization = Array.isArray(
+      organizations
+    )
+      ? organizations[0] || null
+      : null;
+
+    const businessName =
+      organization?.name || "the company";
+
+    // --------------------------------------------------
+    // FOLLOW-UP LOGIC
+    // --------------------------------------------------
+
+    const shouldFollowUp =
+      estimate.status === "expired";
+
+    console.log(
+      "Estimate loaded:",
+      estimate.id
+    );
+
+    console.log(
+      "Estimate status:",
+      estimate.status
+    );
+
+    console.log(
+      "Customer loaded:",
+      customer?.id || null
+    );
+
+    console.log(
+      "Business name:",
+      businessName
+    );
+
+    console.log(
+      "Should follow up:",
+      shouldFollowUp
+    );
+
+    // --------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------
 
     return NextResponse.json({
       success: true,
 
-      estimate_id: estimate.id,
-      organization_id: estimate.organization_id,
-      lead_id: estimate.lead_id,
+      estimate_id:
+        estimate.id,
 
-      title: estimate.title,
-      amount: estimate.amount,
-      status: estimate.status,
-      notes: estimate.notes,
+      organization_id:
+        estimate.organization_id,
 
-      should_follow_up: shouldFollowUp,
+      lead_id:
+        estimate.lead_id,
+
+      business_name:
+        businessName,
+
+      title:
+        estimate.title,
+
+      amount:
+        estimate.amount,
+
+      status:
+        estimate.status,
+
+      notes:
+        estimate.notes,
+
+      should_follow_up:
+        shouldFollowUp,
 
       customer_first_name:
         customer?.first_name || "there",
