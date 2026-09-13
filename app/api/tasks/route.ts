@@ -1,233 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const N8N_SECRET =
+  process.env.N8N_TRACKPR_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
   try {
-    const authorization = request.headers.get("authorization");
-    const n8nSecret = process.env.N8N_TRACKPR_WEBHOOK_SECRET;
-
-    const isN8NRequest =
-      n8nSecret &&
-      authorization === `Bearer ${n8nSecret}`;
-
-    let userId: string | null = null;
-
     // --------------------------------------------------
-    // N8N SERVER-TO-SERVER REQUEST
+    // VERIFY N8N REQUEST
     // --------------------------------------------------
 
-    if (isN8NRequest) {
-      const body = await request.json();
-
-      const {
-        lead_id,
-        title,
-        description,
-        due_at,
-        priority,
-      } = body;
-
-      if (!lead_id) {
-        return NextResponse.json(
-          { error: "lead_id is required." },
-          { status: 400 }
-        );
-      }
-
-      if (!title) {
-        return NextResponse.json(
-          { error: "Task title is required." },
-          { status: 400 }
-        );
-      }
-
-      // Get the lead and organization.
-      const supabaseUrl =
-        process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-      const serviceRoleKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-      if (!supabaseUrl || !serviceRoleKey) {
-        return NextResponse.json(
-          {
-            error:
-              "Supabase server configuration is missing.",
-          },
-          { status: 500 }
-        );
-      }
-
-      const headers = {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-      };
-
-      const leadUrl =
-        `${supabaseUrl}/rest/v1/leads` +
-        `?id=eq.${encodeURIComponent(lead_id)}` +
-        `&select=id,organization_id` +
-        `&limit=1`;
-
-      const leadResponse = await fetch(
-        leadUrl,
-        {
-          method: "GET",
-          headers,
-          cache: "no-store",
-        }
-      );
-
-      if (!leadResponse.ok) {
-        const errorText =
-          await leadResponse.text();
-
-        return NextResponse.json(
-          {
-            error: "Unable to retrieve lead.",
-            details: errorText,
-          },
-          { status: 502 }
-        );
-      }
-
-      const leads =
-        await leadResponse.json();
-
-      if (!leads.length) {
-        return NextResponse.json(
-          { error: "Lead not found." },
-          { status: 404 }
-        );
-      }
-
-      const lead = leads[0];
-
-      // Find an organization member to assign
-      // the task to. Prefer the first member.
-      const memberUrl =
-        `${supabaseUrl}/rest/v1/organization_members` +
-        `?organization_id=eq.${encodeURIComponent(
-          lead.organization_id
-        )}` +
-        `&select=user_id` +
-        `&limit=1`;
-
-      const memberResponse = await fetch(
-        memberUrl,
-        {
-          method: "GET",
-          headers,
-          cache: "no-store",
-        }
-      );
-
-      if (!memberResponse.ok) {
-        const errorText =
-          await memberResponse.text();
-
-        return NextResponse.json(
-          {
-            error:
-              "Unable to retrieve organization member.",
-            details: errorText,
-          },
-          { status: 502 }
-        );
-      }
-
-      const members =
-        await memberResponse.json();
-
-      userId =
-        members.length > 0
-          ? members[0].user_id
-          : null;
-
-      // Create task using Supabase REST.
-      const taskResponse = await fetch(
-        `${supabaseUrl}/rest/v1/tasks`,
-        {
-          method: "POST",
-          headers: {
-            ...headers,
-            Prefer: "return=representation",
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            lead_id,
-            title,
-            description:
-              description || null,
-            due_at:
-              due_at || null,
-            status: "pending",
-            priority:
-              priority || "high",
-          }),
-        }
-      );
-
-      const taskText =
-        await taskResponse.text();
-
-      if (!taskResponse.ok) {
-        return NextResponse.json(
-          {
-            error: "Unable to create task.",
-            details: taskText,
-          },
-          { status: 500 }
-        );
-      }
-
-      const tasks =
-        taskText
-          ? JSON.parse(taskText)
-          : [];
-
-      return NextResponse.json(
-        {
-          success: true,
-          source: "n8n",
-          task:
-            Array.isArray(tasks)
-              ? tasks[0] || null
-              : tasks,
-        },
-        { status: 201 }
-      );
-    }
-
-    // --------------------------------------------------
-    // NORMAL AUTHENTICATED TRACKPR REQUEST
-    // --------------------------------------------------
-
-    const supabase =
-      await createClient();
-
-    const {
-      data: {
-        user,
-      },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const authorization =
+      request.headers.get("authorization");
 
     if (
-      userError ||
-      !user
+      !N8N_SECRET ||
+      authorization !== `Bearer ${N8N_SECRET}`
     ) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        {
+          success: false,
+          error: "Unauthorized",
+        },
         { status: 401 }
       );
     }
 
-    userId = user.id;
+    // --------------------------------------------------
+    // READ REQUEST BODY
+    // --------------------------------------------------
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const {
       lead_id,
@@ -237,127 +42,211 @@ export async function POST(request: NextRequest) {
       priority,
     } = body;
 
-    if (!title) {
-      return NextResponse.json(
-        {
-          error:
-            "Task title is required.",
-        },
-        { status: 400 }
-      );
-    }
-
     if (!lead_id) {
       return NextResponse.json(
         {
-          error:
-            "lead_id is required.",
+          success: false,
+          error: "lead_id is required.",
         },
         { status: 400 }
       );
     }
 
-    const {
-      data: lead,
-      error: leadError,
-    } =
-      await supabase
-        .from("leads")
-        .select(
-          "id, organization_id"
-        )
-        .eq("id", lead_id)
-        .single();
+    if (!title) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Task title is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // --------------------------------------------------
+    // VERIFY SUPABASE CONFIG
+    // --------------------------------------------------
 
     if (
-      leadError ||
-      !lead
+      !SUPABASE_URL ||
+      !SERVICE_ROLE_KEY
     ) {
       return NextResponse.json(
         {
+          success: false,
           error:
-            "Lead not found.",
+            "Supabase server configuration is missing.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const headers = {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    };
+
+    // --------------------------------------------------
+    // GET LEAD
+    // --------------------------------------------------
+
+    const leadUrl =
+      `${SUPABASE_URL}/rest/v1/leads` +
+      `?id=eq.${encodeURIComponent(lead_id)}` +
+      `&select=id,organization_id` +
+      `&limit=1`;
+
+    const leadResponse = await fetch(
+      leadUrl,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }
+    );
+
+    const leadText =
+      await leadResponse.text();
+
+    if (!leadResponse.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Unable to retrieve lead.",
+          details: leadText,
+        },
+        { status: 502 }
+      );
+    }
+
+    const leads =
+      leadText
+        ? JSON.parse(leadText)
+        : [];
+
+    if (
+      !Array.isArray(leads) ||
+      leads.length === 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Lead not found.",
         },
         { status: 404 }
       );
     }
 
-    const {
-      data: membership,
-      error:
-        membershipError,
-    } =
-      await supabase
-        .from(
-          "organization_members"
-        )
-        .select(
-          "organization_id"
-        )
-        .eq(
-          "organization_id",
-          lead.organization_id
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .maybeSingle();
+    const lead = leads[0];
 
-    if (
-      membershipError ||
-      !membership
-    ) {
+    // --------------------------------------------------
+    // GET ORGANIZATION MEMBER
+    // --------------------------------------------------
+
+    const memberUrl =
+      `${SUPABASE_URL}/rest/v1/organization_members` +
+      `?organization_id=eq.${encodeURIComponent(
+        lead.organization_id
+      )}` +
+      `&select=user_id` +
+      `&limit=1`;
+
+    const memberResponse = await fetch(
+      memberUrl,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }
+    );
+
+    const memberText =
+      await memberResponse.text();
+
+    if (!memberResponse.ok) {
       return NextResponse.json(
         {
+          success: false,
           error:
-            "You do not have access to this lead.",
+            "Unable to retrieve organization member.",
+          details: memberText,
         },
-        { status: 403 }
+        { status: 502 }
       );
     }
 
-    const {
-      data: task,
-      error: taskError,
-    } =
-      await supabase
-        .from("tasks")
-        .insert({
-          user_id:
-            user.id,
+    const members =
+      memberText
+        ? JSON.parse(memberText)
+        : [];
+
+    const userId =
+      Array.isArray(members) &&
+      members.length > 0
+        ? members[0].user_id
+        : null;
+
+    // --------------------------------------------------
+    // CREATE TASK
+    // --------------------------------------------------
+
+    const taskResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/tasks`,
+      {
+        method: "POST",
+        headers: {
+          ...headers,
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          user_id: userId,
           lead_id,
           title,
           description:
-            description ||
-            null,
+            description || null,
           due_at:
             due_at || null,
-          status:
-            "pending",
+          status: "pending",
           priority:
-            priority ||
-            "high",
-        })
-        .select()
-        .single();
+            priority || "high",
+        }),
+      }
+    );
 
-    if (taskError) {
+    const taskText =
+      await taskResponse.text();
+
+    if (!taskResponse.ok) {
       console.error(
         "TASK CREATE ERROR:",
-        taskError
+        taskText
       );
 
       return NextResponse.json(
         {
+          success: false,
           error:
             "Unable to create task.",
-          details:
-            taskError.message,
+          details: taskText,
         },
         { status: 500 }
       );
     }
+
+    const tasks =
+      taskText
+        ? JSON.parse(taskText)
+        : [];
+
+    const task =
+      Array.isArray(tasks)
+        ? tasks[0] || null
+        : tasks;
+
+    // --------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------
 
     return NextResponse.json(
       {
@@ -374,6 +263,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message
