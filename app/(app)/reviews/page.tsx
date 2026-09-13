@@ -12,11 +12,20 @@ export default async function ReviewsPage() {
     return null;
   }
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "Reviews membership error:",
+      membershipError
+    );
+  }
 
   if (!membership) {
     return null;

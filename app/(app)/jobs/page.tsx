@@ -12,62 +12,89 @@ export default async function JobsPage() {
     return null;
   }
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "Jobs membership error:",
+      membershipError
+    );
+  }
 
   if (!membership) {
     return null;
   }
 
-  const { data: jobs, error: jobsError } = await supabase
-    .from("jobs")
-    .select(`
-      id,
-      organization_id,
-      lead_id,
-      estimate_id,
-      title,
-      amount,
-      status,
-      payment_status,
-      start_date,
-      due_date,
-      completed_date,
-      notes,
-      created_at,
-      updated_at,
-      leads (
+  const { data: jobs, error: jobsError } =
+    await supabase
+      .from("jobs")
+      .select(`
+        id,
+        organization_id,
+        lead_id,
+        estimate_id,
+        title,
+        amount,
+        status,
+        payment_status,
+        start_date,
+        due_date,
+        completed_date,
+        notes,
+        created_at,
+        updated_at,
+        leads (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone
+        )
+      `)
+      .eq(
+        "organization_id",
+        membership.organization_id
+      )
+      .order("created_at", {
+        ascending: false,
+      });
+
+  if (jobsError) {
+    console.error(
+      "Error loading jobs:",
+      jobsError
+    );
+  }
+
+  const { data: leads, error: leadsError } =
+    await supabase
+      .from("leads")
+      .select(`
         id,
         first_name,
         last_name,
         email,
         phone
+      `)
+      .eq(
+        "organization_id",
+        membership.organization_id
       )
-    `)
-    .eq("organization_id", membership.organization_id)
-    .order("created_at", { ascending: false });
-
-  if (jobsError) {
-    console.error("Error loading jobs:", jobsError);
-  }
-
-  const { data: leads, error: leadsError } = await supabase
-    .from("leads")
-    .select(`
-      id,
-      first_name,
-      last_name,
-      email,
-      phone
-    `)
-    .eq("organization_id", membership.organization_id)
-    .order("first_name", { ascending: true });
+      .order("first_name", {
+        ascending: true,
+      });
 
   if (leadsError) {
-    console.error("Error loading leads:", leadsError);
+    console.error(
+      "Error loading leads:",
+      leadsError
+    );
   }
 
   const { data: estimates, error: estimatesError } =
@@ -80,11 +107,19 @@ export default async function JobsPage() {
         status,
         lead_id
       `)
-      .eq("organization_id", membership.organization_id)
-      .order("created_at", { ascending: false });
+      .eq(
+        "organization_id",
+        membership.organization_id
+      )
+      .order("created_at", {
+        ascending: false,
+      });
 
   if (estimatesError) {
-    console.error("Error loading estimates:", estimatesError);
+    console.error(
+      "Error loading estimates:",
+      estimatesError
+    );
   }
 
   const normalizedJobs =

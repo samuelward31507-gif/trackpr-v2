@@ -31,12 +31,12 @@ export default async function TasksPage() {
     notFound();
   }
 
-  // Get the user's organization
   const { data: membership, error: membershipError } =
     await supabase
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", user.id)
+      .limit(1)
       .maybeSingle();
 
   if (membershipError) {
@@ -50,7 +50,6 @@ export default async function TasksPage() {
     notFound();
   }
 
-  // Load tasks belonging to the current user
   const { data: tasks, error: tasksError } =
     await supabase
       .from("tasks")
@@ -78,7 +77,6 @@ export default async function TasksPage() {
     );
   }
 
-  // Load leads from the user's organization
   const { data: leads, error: leadsError } =
     await supabase
       .from("leads")
