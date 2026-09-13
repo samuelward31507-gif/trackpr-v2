@@ -12,11 +12,16 @@ export default async function DashboardPage() {
     return null;
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
+    .limit(1)
     .maybeSingle();
+
+  if (membershipError) {
+    console.error("Dashboard membership error:", membershipError);
+  }
 
   if (!membership?.organization_id) {
     return null;
@@ -107,38 +112,23 @@ export default async function DashboardPage() {
   ]);
 
   if (leadsResult.error) {
-    console.error(
-      "Dashboard leads error:",
-      leadsResult.error
-    );
+    console.error("Dashboard leads error:", leadsResult.error);
   }
 
   if (estimatesResult.error) {
-    console.error(
-      "Dashboard estimates error:",
-      estimatesResult.error
-    );
+    console.error("Dashboard estimates error:", estimatesResult.error);
   }
 
   if (jobsResult.error) {
-    console.error(
-      "Dashboard jobs error:",
-      jobsResult.error
-    );
+    console.error("Dashboard jobs error:", jobsResult.error);
   }
 
   if (paymentsResult.error) {
-    console.error(
-      "Dashboard payments error:",
-      paymentsResult.error
-    );
+    console.error("Dashboard payments error:", paymentsResult.error);
   }
 
   if (reviewsResult.error) {
-    console.error(
-      "Dashboard reviews error:",
-      reviewsResult.error
-    );
+    console.error("Dashboard reviews error:", reviewsResult.error);
   }
 
   /*
@@ -146,12 +136,10 @@ export default async function DashboardPage() {
    * DashboardClient expects the estimate value
    * under the property "total".
    */
-  const estimates = (estimatesResult.data ?? []).map(
-    (estimate) => ({
-      ...estimate,
-      total: estimate.amount,
-    })
-  );
+  const estimates = (estimatesResult.data ?? []).map((estimate) => ({
+    ...estimate,
+    total: estimate.amount,
+  }));
 
   return (
     <DashboardClient

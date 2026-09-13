@@ -12,11 +12,16 @@ export default async function LeadsPage() {
     return null;
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
+    .limit(1)
     .maybeSingle();
+
+  if (membershipError) {
+    console.error("Leads membership error:", membershipError);
+  }
 
   if (!membership) {
     return null;
@@ -37,7 +42,9 @@ export default async function LeadsPage() {
       created_at
     `)
     .eq("organization_id", membership.organization_id)
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: false,
+    });
 
   if (error) {
     console.error("Error loading leads:", error);
