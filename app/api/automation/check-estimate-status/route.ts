@@ -53,25 +53,23 @@ export async function GET(request: Request) {
       "Content-Type": "application/json",
     };
 
+    // --------------------------------------------------
+    // LOAD ESTIMATE
+    // --------------------------------------------------
+
     const estimateUrl = new URL(
       `${supabaseUrl}/rest/v1/estimates`
     );
 
-    estimateUrl.searchParams.set(
-      "id",
-      `eq.${estimateId}`
-    );
-
+    estimateUrl.searchParams.set("id", `eq.${estimateId}`);
     estimateUrl.searchParams.set(
       "organization_id",
       `eq.${organizationId}`
     );
-
     estimateUrl.searchParams.set(
       "select",
       "id,organization_id,lead_id,title,amount,status,notes"
     );
-
     estimateUrl.searchParams.set("limit", "1");
 
     const estimateResponse = await fetch(
@@ -114,8 +112,74 @@ export async function GET(request: Request) {
       );
     }
 
+    // --------------------------------------------------
+    // LOAD CUSTOMER / LEAD
+    // --------------------------------------------------
+
+    let customer = null;
+
+    if (estimate.lead_id) {
+      const leadUrl = new URL(
+        `${supabaseUrl}/rest/v1/leads`
+      );
+
+      leadUrl.searchParams.set(
+        "id",
+        `eq.${estimate.lead_id}`
+      );
+
+      leadUrl.searchParams.set(
+        "organization_id",
+        `eq.${organizationId}`
+      );
+
+      leadUrl.searchParams.set(
+        "select",
+        "id,first_name,last_name,phone,email"
+      );
+
+      leadUrl.searchParams.set("limit", "1");
+
+      const leadResponse = await fetch(
+        leadUrl.toString(),
+        {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        }
+      );
+
+      const leadText = await leadResponse.text();
+
+      if (!leadResponse.ok) {
+        console.error(
+          "Lead lookup failed:",
+          leadText
+        );
+
+        return NextResponse.json(
+          {
+            error: "Unable to load customer information.",
+            details: leadText,
+          },
+          { status: 500 }
+        );
+      }
+
+      const leads = JSON.parse(leadText);
+
+      customer = Array.isArray(leads)
+        ? leads[0] || null
+        : null;
+    }
+
+    const shouldFollowUp =
+      estimate.status === "sent";
+
     console.log("Estimate loaded:", estimate.id);
     console.log("Estimate status:", estimate.status);
+    console.log("Customer loaded:", customer?.id || null);
+    console.log("Should follow up:", shouldFollowUp);
 
     return NextResponse.json({
       success: true,
@@ -129,9 +193,19 @@ export async function GET(request: Request) {
       status: estimate.status,
       notes: estimate.notes,
 
-      // Used by n8n to decide whether follow-up should continue.
-      should_follow_up:
-        estimate.status === "sent",
+      should_follow_up: shouldFollowUp,
+
+      customer_first_name:
+        customer?.first_name || "there",
+
+      customer_last_name:
+        customer?.last_name || "",
+
+      customer_phone:
+        customer?.phone || null,
+
+      customer_email:
+        customer?.email || null,
     });
   } catch (error) {
     console.error(
