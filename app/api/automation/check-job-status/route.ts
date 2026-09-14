@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     );
 
     // -----------------------------------------
-    // GET JOB
+    // GET JOB BY ID
     // -----------------------------------------
     const { data: job, error: jobError } = await supabase
       .from("jobs")
@@ -93,9 +93,12 @@ export async function GET(request: NextRequest) {
         `
       )
       .eq("id", jobId)
-      .eq("organization_id", organizationId)
+      .limit(1)
       .maybeSingle();
 
+    // -----------------------------------------
+    // DATABASE ERROR
+    // -----------------------------------------
     if (jobError) {
       console.error("Error checking job status:", jobError);
 
@@ -123,6 +126,31 @@ export async function GET(request: NextRequest) {
           organization_id: organizationId,
         },
         { status: 200 }
+      );
+    }
+
+    // -----------------------------------------
+    // ORGANIZATION SECURITY CHECK
+    // -----------------------------------------
+    if (job.organization_id !== organizationId) {
+      console.error(
+        "Job organization mismatch:",
+        {
+          job_id: jobId,
+          requested_organization_id: organizationId,
+          actual_organization_id: job.organization_id,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          found: false,
+          error: "Job does not belong to the requested organization.",
+          job_id: jobId,
+          organization_id: organizationId,
+        },
+        { status: 403 }
       );
     }
 
