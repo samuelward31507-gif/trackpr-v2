@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 
 const N8N_SECRET = "trackpr-n8n-secret-2026-change-this";
 
@@ -42,7 +42,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("Missing Supabase service-role configuration.");
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Server Supabase configuration is missing.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
     const { data: estimate, error } = await supabase
       .from("estimates")
@@ -97,14 +121,19 @@ export async function GET(request: NextRequest) {
       title: estimate.title,
       amount: estimate.amount,
       status: estimate.status,
+
       is_sent: estimate.status === "sent",
+
       is_draft: estimate.status === "draft",
+
       is_accepted:
         estimate.status === "accepted" ||
         estimate.status === "approved",
+
       is_declined:
         estimate.status === "declined" ||
         estimate.status === "rejected",
+
       created_at: estimate.created_at,
       updated_at: estimate.updated_at,
     });
