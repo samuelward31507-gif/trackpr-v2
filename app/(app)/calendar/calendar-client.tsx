@@ -260,7 +260,8 @@ export default function CalendarClient({
       })
       .sort(
         (a, b) =>
-          new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
+          new Date(a.start_at).getTime() -
+          new Date(b.start_at).getTime()
       )
       .slice(0, 6);
   }, [filteredAppointments]);
@@ -347,6 +348,93 @@ export default function CalendarClient({
     setError("");
   }
 
+  async function dispatchAppointmentEvent(
+    appointment: Appointment,
+    eventType: string
+  ) {
+    try {
+      const lead = leadMap.get(appointment.lead_id ?? "");
+
+      const { data: event, error: eventError } = await supabase
+        .from("automation_events")
+        .insert({
+          organization_id: organizationId,
+          event_type: eventType,
+          lead_id: appointment.lead_id,
+          contact_id: null,
+          appointment_id: appointment.id,
+          estimate_id: null,
+          job_id: null,
+          payment_id: null,
+          review_id: null,
+          payload: {
+            appointment_id: appointment.id,
+            organization_id: organizationId,
+            lead_id: appointment.lead_id,
+            title: appointment.title,
+            status: appointment.status,
+            start_at: appointment.start_at,
+            end_at: appointment.end_at,
+            notes: appointment.notes,
+            first_name: lead?.first_name ?? null,
+            last_name: lead?.last_name ?? null,
+            phone: lead?.phone ?? null,
+            email: lead?.email ?? null,
+          },
+          status: "pending",
+        })
+        .select("id")
+        .single();
+
+      if (eventError) {
+        console.error(
+          "Appointment automation event creation failed:",
+          eventError
+        );
+        return;
+      }
+
+      if (!event?.id) {
+        console.error(
+          "Appointment automation event was created without an event id."
+        );
+        return;
+      }
+
+      const response = await fetch("/api/automation/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          event_id: event.id,
+          organization_id: organizationId,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error(
+          "Appointment automation event dispatch failed:",
+          result
+        );
+        return;
+      }
+
+      console.log("Appointment automation event delivered successfully", {
+        event_id: event.id,
+        event_type: eventType,
+        n8n_response: result,
+      });
+    } catch (dispatchError) {
+      console.error(
+        "Unexpected appointment automation dispatch error:",
+        dispatchError
+      );
+    }
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
@@ -408,6 +496,12 @@ export default function CalendarClient({
           appointment.id === selectedAppointment.id ? data : appointment
         )
       );
+
+      /*
+       * Appointment edits do not dispatch the appointment_booked event.
+       * The booking event is only emitted when a brand-new appointment
+       * is created, preventing duplicate reminder triggers.
+       */
     } else {
       const { data, error: insertError } = await supabase
         .from("appointments")
@@ -430,6 +524,13 @@ export default function CalendarClient({
             new Date(b.start_at).getTime()
         )
       );
+
+      /*
+       * NEW:
+       * Create and dispatch the automation event only after the
+       * appointment itself has successfully been created.
+       */
+      await dispatchAppointmentEvent(data, "appointment_booked");
     }
 
     setSaving(false);
@@ -509,7 +610,6 @@ export default function CalendarClient({
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
       <div className="mx-auto max-w-[1600px]">
-        {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -547,7 +647,6 @@ export default function CalendarClient({
           </div>
         </div>
 
-        {/* KPI row */}
         <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
@@ -638,7 +737,6 @@ export default function CalendarClient({
           </div>
         </div>
 
-        {/* Controls */}
         <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap items-center gap-2">
@@ -704,11 +802,8 @@ export default function CalendarClient({
           </div>
         </div>
 
-        {/* Main */}
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-          {/* Calendar */}
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {/* Weekdays */}
             <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80">
               {WEEKDAYS.map((day) => (
                 <div
@@ -720,7 +815,6 @@ export default function CalendarClient({
               ))}
             </div>
 
-            {/* Days */}
             <div className="grid grid-cols-7">
               {calendarDays.map((day) => {
                 const dayAppointments = appointmentsForDay(day);
@@ -801,7 +895,6 @@ export default function CalendarClient({
             </div>
           </div>
 
-          {/* Upcoming */}
           <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50/60 p-5">
               <div className="flex items-center justify-between">
@@ -895,6 +988,7 @@ export default function CalendarClient({
 
                           <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
                             <User size={13} />
+
                             <span className="truncate">
                               {getLeadName(lead)}
                             </span>
@@ -910,7 +1004,6 @@ export default function CalendarClient({
         </div>
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
@@ -921,7 +1014,6 @@ export default function CalendarClient({
           }}
         >
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            {/* Modal header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
@@ -966,7 +1058,6 @@ export default function CalendarClient({
               )}
 
               <div className="grid gap-5">
-                {/* Title */}
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                     Appointment Title
@@ -985,7 +1076,6 @@ export default function CalendarClient({
                   />
                 </div>
 
-                {/* Customer + Status */}
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -1037,7 +1127,6 @@ export default function CalendarClient({
                   </div>
                 </div>
 
-                {/* Date/time */}
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Clock3 size={14} className="text-slate-400" />
@@ -1086,7 +1175,6 @@ export default function CalendarClient({
                   </div>
                 </div>
 
-                {/* Notes */}
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                     Notes
@@ -1106,7 +1194,6 @@ export default function CalendarClient({
                   />
                 </div>
 
-                {/* Customer information */}
                 {form.lead_id && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     {(() => {
@@ -1139,6 +1226,7 @@ export default function CalendarClient({
                                   size={14}
                                   className="shrink-0 text-slate-400"
                                 />
+
                                 <span className="truncate">
                                   {lead.phone}
                                 </span>
@@ -1151,6 +1239,7 @@ export default function CalendarClient({
                                   size={14}
                                   className="shrink-0 text-slate-400"
                                 />
+
                                 <span className="truncate">
                                   {lead.email}
                                 </span>
@@ -1169,7 +1258,6 @@ export default function CalendarClient({
                 )}
               </div>
 
-              {/* Footer */}
               <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   {!isCreating && (
@@ -1180,6 +1268,7 @@ export default function CalendarClient({
                       className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Trash2 size={16} />
+
                       {deleting ? "Deleting..." : "Delete"}
                     </button>
                   )}
