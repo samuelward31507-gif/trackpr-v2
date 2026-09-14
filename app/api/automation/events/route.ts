@@ -25,15 +25,15 @@ type WebhookTarget = {
 /*
  * Get every n8n workflow that should receive an event.
  *
- * Most Trackpr events go to one workflow.
+ * Some Trackpr events intentionally go to multiple workflows.
  *
- * lead_created intentionally goes to multiple workflows:
- *
+ * lead_created:
  *   #1 Instant New Lead Response
  *   #3 New Lead Follow-Up
  *
- * This allows one Trackpr event to trigger multiple automations
- * without creating duplicate events in Trackpr.
+ * job_completed:
+ *   #6 Job Completed → Review Request
+ *   #7 Job Completion Follow-Up
  */
 function getWebhookTargets(eventType: string): string[] {
   const webhookMap: Record<string, string[]> = {
@@ -66,8 +66,14 @@ function getWebhookTargets(eventType: string): string[] {
       "N8N_TRACKPR_ESTIMATE_EXPIRED_WEBHOOK_URL",
     ],
 
+    /*
+     * Job completion intentionally fans out
+     * to both the review request and
+     * the job completion follow-up workflows.
+     */
     job_completed: [
       "N8N_TRACKPR_JOB_COMPLETED_WEBHOOK_URL",
+      "N8N_TRACKPR_JOB_COMPLETION_FOLLOW_UP_WEBHOOK_URL",
     ],
 
     payment_received: [
@@ -309,9 +315,6 @@ export async function POST(request: Request) {
 
     /*
      * Build the standardized payload sent to n8n.
-     *
-     * This structure matches the payload expected
-     * by the existing n8n workflows.
      */
     const n8nPayload = {
       event_id:
@@ -357,10 +360,13 @@ export async function POST(request: Request) {
     /*
      * Send the event to every target workflow.
      *
-     * For lead_created this means both:
+     * lead_created:
+     *   #1 Instant New Lead Response
+     *   #3 New Lead Follow-Up
      *
-     * #1 Instant New Lead Response
-     * #3 New Lead Follow-Up
+     * job_completed:
+     *   #6 Review Request
+     *   #7 Job Completion Follow-Up
      */
     const dispatchResults =
       await Promise.all(
