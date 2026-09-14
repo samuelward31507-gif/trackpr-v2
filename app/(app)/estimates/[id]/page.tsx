@@ -11,25 +11,69 @@ export default async function EstimateDetailPage({
 
   const supabase = await createClient();
 
+  /*
+   * Authenticate user
+   */
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (userError || !user) {
+    console.error(
+      "Estimate detail authentication failed:",
+      userError
+    );
+
     notFound();
   }
 
-  const { data: membership } = await supabase
+  /*
+   * Load organization membership.
+   *
+   * limit(1) + maybeSingle() prevents the
+   * "multiple rows returned" issue.
+   */
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
+    .limit(1)
     .maybeSingle();
 
-  if (!membership) {
+  if (membershipError) {
+    console.error(
+      "Error loading organization membership:",
+      membershipError
+    );
+
     notFound();
   }
 
-  const { data: estimate, error } = await supabase
+  if (!membership?.organization_id) {
+    console.error(
+      "No organization membership found for user."
+    );
+
+    notFound();
+  }
+
+  const organizationId =
+    membership.organization_id;
+
+  /*
+   * Load the estimate.
+   *
+   * The organization filter ensures users can
+   * only access estimates belonging to their org.
+   */
+  const {
+    data: estimate,
+    error: estimateError,
+  } = await supabase
     .from("estimates")
     .select(`
       id,
@@ -52,18 +96,39 @@ export default async function EstimateDetailPage({
       )
     `)
     .eq("id", id)
-    .eq("organization_id", membership.organization_id)
+    .eq(
+      "organization_id",
+      organizationId
+    )
+    .limit(1)
     .maybeSingle();
 
-  if (error) {
-    console.error("Error loading estimate:", error);
-  }
+  if (estimateError) {
+    console.error(
+      "Error loading estimate:",
+      estimateError
+    );
 
-  if (!estimate) {
     notFound();
   }
 
-  const { data: leads, error: leadsError } = await supabase
+  if (!estimate) {
+    console.error(
+      "Estimate not found:",
+      id
+    );
+
+    notFound();
+  }
+
+  /*
+   * Load all leads for the Edit Estimate
+   * customer selector.
+   */
+  const {
+    data: leads,
+    error: leadsError,
+  } = await supabase
     .from("leads")
     .select(`
       id,
@@ -72,14 +137,32 @@ export default async function EstimateDetailPage({
       email,
       phone
     `)
-    .eq("organization_id", membership.organization_id)
-    .order("first_name", { ascending: true });
+    .eq(
+      "organization_id",
+      organizationId
+    )
+    .order(
+      "first_name",
+      {
+        ascending: true,
+      }
+    );
 
   if (leadsError) {
-    console.error("Error loading leads:", leadsError);
+    console.error(
+      "Error loading leads:",
+      leadsError
+    );
   }
 
-  const lead = Array.isArray(estimate.leads)
+  /*
+   * Supabase may return the related lead as
+   * either an object or an array depending
+   * on the relationship shape.
+   */
+  const lead = Array.isArray(
+    estimate.leads
+  )
     ? estimate.leads[0] ?? null
     : estimate.leads;
 
