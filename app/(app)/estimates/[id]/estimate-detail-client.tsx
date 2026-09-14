@@ -189,6 +189,7 @@ export default function EstimateDetailClient({
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -221,18 +222,12 @@ export default function EstimateDetailClient({
     initialEstimate.notes ?? ""
   );
 
-  /*
-   * The estimate's related customer.
-   * This was missing in the previous version.
-   */
   const customer = estimate.leads ?? null;
 
   function openEdit() {
     setTitle(estimate.title ?? "");
 
-    setLeadId(
-      estimate.lead_id ?? ""
-    );
+    setLeadId(estimate.lead_id ?? "");
 
     setAmount(
       estimate.amount != null
@@ -252,9 +247,7 @@ export default function EstimateDetailClient({
       estimate.expiration_date ?? ""
     );
 
-    setNotes(
-      estimate.notes ?? ""
-    );
+    setNotes(estimate.notes ?? "");
 
     setError(null);
     setIsEditOpen(true);
@@ -343,6 +336,234 @@ export default function EstimateDetailClient({
     setIsEditOpen(false);
   }
 
+  /*
+   * SEND ESTIMATE
+   *
+   * This changes the estimate to "sent",
+   * creates an estimate_sent automation event,
+   * and dispatches that event to the existing
+   * Trackpr → n8n automation engine.
+   */
+  async function sendEstimate() {
+    setError(null);
+
+    if (!estimate.lead_id) {
+      setError(
+        "This estimate does not have a customer attached."
+      );
+      return;
+    }
+
+    if (estimate.status === "sent") {
+      setError(
+        "This estimate has already been sent."
+      );
+      return;
+    }
+
+    try {
+      setSending(true);
+
+      /*
+       * Step 1:
+       * Update estimate status to sent.
+       */
+      const {
+        error: updateError,
+      } = await supabase.rpc(
+        "update_estimate",
+        {
+          p_estimate_id:
+            estimate.id,
+
+          p_title:
+            estimate.title,
+
+          p_lead_id:
+            estimate.lead_id,
+
+          p_amount:
+            Number(estimate.amount) || 0,
+
+          p_status:
+            "sent",
+
+          p_estimate_date:
+            estimate.estimate_date,
+
+          p_expiration_date:
+            estimate.expiration_date,
+
+          p_notes:
+            estimate.notes || null,
+        }
+      );
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      /*
+       * Step 2:
+       * Create the automation event.
+       */
+      const {
+        data: automationEvent,
+        error: automationEventError,
+      } = await supabase
+        .from("automation_events")
+        .insert({
+          organization_id:
+            estimate.organization_id,
+
+          event_type:
+            "estimate_sent",
+
+          lead_id:
+            estimate.lead_id,
+
+          contact_id:
+            null,
+
+          appointment_id:
+            null,
+
+          estimate_id:
+            estimate.id,
+
+          job_id:
+            null,
+
+          payment_id:
+            null,
+
+          review_id:
+            null,
+
+          payload: {
+            estimate_id:
+              estimate.id,
+
+            lead_id:
+              estimate.lead_id,
+
+            organization_id:
+              estimate.organization_id,
+
+            title:
+              estimate.title,
+
+            amount:
+              Number(estimate.amount) || 0,
+
+            status:
+              "sent",
+
+            estimate_date:
+              estimate.estimate_date,
+
+            expiration_date:
+              estimate.expiration_date,
+
+            notes:
+              estimate.notes,
+
+            first_name:
+              customer?.first_name ?? null,
+
+            last_name:
+              customer?.last_name ?? null,
+
+            email:
+              customer?.email ?? null,
+
+            phone:
+              customer?.phone ?? null,
+          },
+
+          status:
+            "pending",
+        })
+        .select("id")
+        .single();
+
+      if (automationEventError) {
+        throw automationEventError;
+      }
+
+      if (!automationEvent?.id) {
+        throw new Error(
+          "The estimate was marked as sent, but the automation event was not created."
+        );
+      }
+
+      /*
+       * Step 3:
+       * Tell Trackpr's automation dispatcher
+       * to send the event to n8n.
+       */
+      const dispatchResponse =
+        await fetch(
+          "/api/automation/events",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              event_id:
+                automationEvent.id,
+
+              organization_id:
+                estimate.organization_id,
+            }),
+          }
+        );
+
+      const dispatchData =
+        await dispatchResponse.json();
+
+      if (!dispatchResponse.ok) {
+        console.error(
+          "Estimate automation dispatch failed:",
+          dispatchData
+        );
+
+        throw new Error(
+          dispatchData?.error ||
+            "The estimate was marked as sent, but the follow-up automation could not be started."
+        );
+      }
+
+      /*
+       * Update the UI immediately.
+       */
+      setEstimate({
+        ...estimate,
+        status: "sent",
+        updated_at:
+          new Date().toISOString(),
+      });
+
+      setError(null);
+    } catch (err: any) {
+      console.error(
+        "Error sending estimate:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Something went wrong while sending the estimate."
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function convertToJob() {
     setError(null);
 
@@ -356,9 +577,6 @@ export default function EstimateDetailClient({
     try {
       setSaving(true);
 
-      /*
-       * Prevent duplicate conversion.
-       */
       const {
         data: existingJob,
         error: existingJobError,
@@ -379,10 +597,6 @@ export default function EstimateDetailClient({
         throw existingJobError;
       }
 
-      /*
-       * If this estimate already has a job,
-       * open that job instead of creating another one.
-       */
       if (existingJob?.id) {
         router.push(
           `/jobs/${existingJob.id}`
@@ -390,55 +604,55 @@ export default function EstimateDetailClient({
         return;
       }
 
-      /*
-       * Use the EXISTING Jobs RPC.
-       * This matches the existing Jobs creation flow.
-       */
       const {
         data,
         error: createJobError,
-      } = await supabase.rpc("create_job", {
-        p_organization_id:
-          estimate.organization_id,
+      } = await supabase.rpc(
+        "create_job",
+        {
+          p_organization_id:
+            estimate.organization_id,
 
-        p_title:
-          `${estimate.title} - Job`,
+          p_title:
+            `${estimate.title} - Job`,
 
-        p_lead_id:
-          estimate.lead_id,
+          p_lead_id:
+            estimate.lead_id,
 
-        p_estimate_id:
-          estimate.id,
+          p_estimate_id:
+            estimate.id,
 
-        p_amount:
-          Number(estimate.amount) || 0,
+          p_amount:
+            Number(estimate.amount) || 0,
 
-        p_status:
-          "scheduled",
+          p_status:
+            "scheduled",
 
-        p_payment_status:
-          "unpaid",
+          p_payment_status:
+            "unpaid",
 
-        p_start_date:
-          null,
+          p_start_date:
+            null,
 
-        p_due_date:
-          null,
+          p_due_date:
+            null,
 
-        p_completed_date:
-          null,
+          p_completed_date:
+            null,
 
-        p_notes:
-          estimate.notes || null,
-      });
+          p_notes:
+            estimate.notes || null,
+        }
+      );
 
       if (createJobError) {
         throw createJobError;
       }
 
-      const createdJob = Array.isArray(data)
-        ? data[0]
-        : data;
+      const createdJob =
+        Array.isArray(data)
+          ? data[0]
+          : data;
 
       if (!createdJob?.id) {
         throw new Error(
@@ -475,7 +689,8 @@ export default function EstimateDetailClient({
     } = await supabase.rpc(
       "delete_estimate",
       {
-        p_estimate_id: estimate.id,
+        p_estimate_id:
+          estimate.id,
       }
     );
 
@@ -602,7 +817,6 @@ export default function EstimateDetailClient({
               {customer ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
                     <div>
                       <p className="text-lg font-semibold text-slate-950">
                         {getLeadName(
@@ -631,7 +845,6 @@ export default function EstimateDetailClient({
                     >
                       View Customer
                     </Link>
-
                   </div>
                 </div>
               ) : (
@@ -662,7 +875,6 @@ export default function EstimateDetailClient({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-
                 <div className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                     <CalendarDays className="h-4 w-4" />
@@ -714,7 +926,6 @@ export default function EstimateDetailClient({
                     )}
                   </p>
                 </div>
-
               </div>
             </section>
 
@@ -734,7 +945,6 @@ export default function EstimateDetailClient({
                 </p>
               )}
             </section>
-
           </div>
 
           {/* Sidebar */}
@@ -751,7 +961,7 @@ export default function EstimateDetailClient({
                 <button
                   type="button"
                   onClick={convertToJob}
-                  disabled={saving}
+                  disabled={saving || sending}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Check className="h-4 w-4" />
@@ -765,7 +975,8 @@ export default function EstimateDetailClient({
                 <button
                   type="button"
                   onClick={openEdit}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  disabled={sending}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Edit3 className="h-4 w-4" />
                   Edit Estimate
@@ -774,11 +985,25 @@ export default function EstimateDetailClient({
                 {/* SEND */}
                 <button
                   type="button"
-                  disabled
-                  className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-400"
+                  onClick={sendEstimate}
+                  disabled={
+                    sending ||
+                    saving ||
+                    estimate.status === "sent"
+                  }
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                    estimate.status === "sent"
+                      ? "cursor-not-allowed border border-blue-200 bg-blue-50 text-blue-600"
+                      : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <Mail className="h-4 w-4" />
-                  Send Estimate
+
+                  {sending
+                    ? "Sending..."
+                    : estimate.status === "sent"
+                    ? "Estimate Sent"
+                    : "Send Estimate"}
                 </button>
 
                 {/* DELETE */}
@@ -788,12 +1013,12 @@ export default function EstimateDetailClient({
                     setError(null);
                     setIsDeleteOpen(true);
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                  disabled={sending}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete Estimate
                 </button>
-
               </div>
 
               {error && (
@@ -810,7 +1035,6 @@ export default function EstimateDetailClient({
               </h2>
 
               <div className="mt-4 space-y-4">
-
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-sm text-slate-500">
                     Status
@@ -850,10 +1074,8 @@ export default function EstimateDetailClient({
                     )}
                   </span>
                 </div>
-
               </div>
             </section>
-
           </aside>
         </div>
       </div>
@@ -861,11 +1083,9 @@ export default function EstimateDetailClient({
       {/* EDIT MODAL */}
       {isEditOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
 
             <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
-
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
                   Edit Estimate
@@ -884,7 +1104,6 @@ export default function EstimateDetailClient({
               >
                 <X className="h-5 w-5" />
               </button>
-
             </div>
 
             <div className="space-y-5 p-6">
@@ -910,7 +1129,6 @@ export default function EstimateDetailClient({
                 </label>
 
                 <div className="relative">
-
                   <select
                     value={leadId}
                     onChange={(e) =>
@@ -939,7 +1157,6 @@ export default function EstimateDetailClient({
                   </select>
 
                   <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                 </div>
               </div>
 
@@ -951,7 +1168,6 @@ export default function EstimateDetailClient({
                   </label>
 
                   <div className="relative">
-
                     <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                     <input
@@ -967,7 +1183,6 @@ export default function EstimateDetailClient({
                       placeholder="0.00"
                       className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-9 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                     />
-
                   </div>
                 </div>
 
@@ -977,13 +1192,11 @@ export default function EstimateDetailClient({
                   </label>
 
                   <div className="relative">
-
                     <select
                       value={status}
                       onChange={(e) =>
                         setStatus(
-                          e.target
-                            .value as EstimateStatus
+                          e.target.value as EstimateStatus
                         )
                       }
                       className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
@@ -1003,10 +1216,8 @@ export default function EstimateDetailClient({
                     </select>
 
                     <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                   </div>
                 </div>
-
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -1044,7 +1255,6 @@ export default function EstimateDetailClient({
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
-
               </div>
 
               <div>
@@ -1070,7 +1280,6 @@ export default function EstimateDetailClient({
                   {error}
                 </div>
               )}
-
             </div>
 
             <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white px-6 py-5 sm:flex-row sm:justify-end">
@@ -1094,9 +1303,7 @@ export default function EstimateDetailClient({
                   ? "Saving..."
                   : "Save Changes"}
               </button>
-
             </div>
-
           </div>
         </div>
       )}
@@ -1104,7 +1311,6 @@ export default function EstimateDetailClient({
       {/* DELETE MODAL */}
       {isDeleteOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
 
             <div className="p-6">
@@ -1159,7 +1365,6 @@ export default function EstimateDetailClient({
                 </button>
 
               </div>
-
             </div>
           </div>
         </div>
