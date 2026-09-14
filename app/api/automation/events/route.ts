@@ -1,9 +1,61 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+type AutomationEvent = {
+  id: string;
+  organization_id: string;
+  event_type: string;
+  lead_id: string | null;
+  contact_id: string | null;
+  appointment_id: string | null;
+  estimate_id: string | null;
+  job_id: string | null;
+  payment_id: string | null;
+  review_id: string | null;
+  payload: Record<string, unknown>;
+  status: string;
+  created_at: string;
+};
+
+/*
+ * Map Trackpr event types to their n8n webhook environment variables.
+ *
+ * IMPORTANT:
+ * We are intentionally keeping the webhook URLs in Vercel environment
+ * variables instead of hard-coding them into the application.
+ */
+function getWebhookEnvironmentVariable(eventType: string) {
+  const webhookMap: Record<string, string> = {
+    lead_created: "N8N_TRACKPR_NEW_LEAD_WEBHOOK_URL",
+    missed_call: "N8N_TRACKPR_MISSED_CALL_WEBHOOK_URL",
+    appointment_booked:
+      "N8N_TRACKPR_APPOINTMENT_BOOKED_WEBHOOK_URL",
+    appointment_reminder:
+      "N8N_TRACKPR_APPOINTMENT_REMINDER_WEBHOOK_URL",
+    appointment_no_show:
+      "N8N_TRACKPR_APPOINTMENT_NO_SHOW_WEBHOOK_URL",
+    estimate_sent:
+      "N8N_TRACKPR_ESTIMATE_SENT_WEBHOOK_URL",
+    estimate_expired:
+      "N8N_TRACKPR_ESTIMATE_EXPIRED_WEBHOOK_URL",
+    job_completed:
+      "N8N_TRACKPR_JOB_COMPLETED_WEBHOOK_URL",
+    payment_received:
+      "N8N_TRACKPR_PAYMENT_RECEIVED_WEBHOOK_URL",
+    review_requested:
+      "N8N_TRACKPR_REVIEW_REQUESTED_WEBHOOK_URL",
+    lost_lead:
+      "N8N_TRACKPR_LOST_LEAD_WEBHOOK_URL",
+    high_priority_lead:
+      "N8N_TRACKPR_HIGH_PRIORITY_LEAD_WEBHOOK_URL",
+  };
+
+  return webhookMap[eventType];
+}
+
 export async function POST(request: Request) {
   try {
-    console.log("=== TRACKPR AUTOMATION DELIVERY START ===");
+    console.log("=== TRACKPR AUTOMATION DISPATCH START ===");
 
     const supabase = await createClient();
 
@@ -17,7 +69,7 @@ export async function POST(request: Request) {
 
     if (userError || !user) {
       console.error(
-        "Automation delivery authentication failed:",
+        "Automation dispatch authentication failed:",
         userError
       );
 
@@ -30,11 +82,6 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(
-      "Authenticated user:",
-      user.id
-    );
-
     /*
      * Read request body
      */
@@ -45,13 +92,10 @@ export async function POST(request: Request) {
       organization_id,
     } = body;
 
-    console.log(
-      "Automation delivery request:",
-      {
-        event_id,
-        organization_id,
-      }
-    );
+    console.log("Automation dispatch request:", {
+      event_id,
+      organization_id,
+    });
 
     if (!event_id || !organization_id) {
       return NextResponse.json(
@@ -73,11 +117,9 @@ export async function POST(request: Request) {
     } = await supabase
       .from("organization_members")
       .select("organization_id")
-      .eq(
-        "organization_id",
-        organization_id
-      )
+      .eq("organization_id", organization_id)
       .eq("user_id", user.id)
+      .limit(1)
       .maybeSingle();
 
     if (membershipError) {
@@ -88,8 +130,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error:
-            membershipError.message,
+          error: membershipError.message,
           stage: "organization_membership",
         },
         { status: 500 }
@@ -97,10 +138,6 @@ export async function POST(request: Request) {
     }
 
     if (!membership) {
-      console.error(
-        "User does not belong to organization."
-      );
-
       return NextResponse.json(
         {
           error:
@@ -110,10 +147,6 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
-
-    console.log(
-      "Organization membership verified."
-    );
 
     /*
      * Load automation event
@@ -125,10 +158,7 @@ export async function POST(request: Request) {
       .from("automation_events")
       .select("*")
       .eq("id", event_id)
-      .eq(
-        "organization_id",
-        organization_id
-      )
+      .eq("organization_id", organization_id)
       .single();
 
     if (eventError) {
@@ -149,46 +179,116 @@ export async function POST(request: Request) {
     if (!event) {
       return NextResponse.json(
         {
-          error:
-            "Automation event not found.",
+          error: "Automation event not found.",
           stage: "automation_event_lookup",
         },
         { status: 404 }
       );
     }
 
-    console.log(
-      "Automation event loaded:",
-      event.id
-    );
+    const automationEvent = event as AutomationEvent;
+
+    console.log("Automation event loaded:", {
+      id: automationEvent.id,
+      event_type: automationEvent.event_type,
+    });
 
     /*
-     * Get private n8n webhook URL
+     * Determine which n8n workflow should receive this event.
      */
+    const environmentVariable =
+      getWebhookEnvironmentVariable(
+        automationEvent.event_type
+      );
+
+    if (!environmentVariable) {
+      console.warn(
+        "No n8n webhook mapping exists for event type:",
+        automationEvent.event_type
+      );
+
+      return NextResponse.json({
+        success: false,
+        delivered: false,
+        event_id: automationEvent.id,
+        event_type: automationEvent.event_type,
+        error:
+          "No n8n webhook mapping exists for this event type.",
+        stage: "webhook_mapping",
+      });
+    }
+
     const n8nWebhookUrl =
-      process.env.N8N_TRACKPR_WEBHOOK_URL;
+      process.env[environmentVariable];
 
     if (!n8nWebhookUrl) {
       console.error(
-        "N8N_TRACKPR_WEBHOOK_URL is not configured."
+        `Environment variable ${environmentVariable} is not configured.`
       );
 
       return NextResponse.json(
         {
           error:
-            "n8n webhook URL is not configured. Restart the Next.js development server after changing .env.local.",
+            `n8n webhook is not configured for ${automationEvent.event_type}.`,
           stage: "environment",
+          environment_variable:
+            environmentVariable,
         },
         { status: 500 }
       );
     }
 
-    console.log(
-      "n8n webhook URL is configured."
-    );
+    console.log("Dispatching automation:", {
+      event_type: automationEvent.event_type,
+      environment_variable:
+        environmentVariable,
+    });
 
     /*
-     * Send event to n8n
+     * Build the standardized payload sent to n8n.
+     */
+    const n8nPayload = {
+      event_id: automationEvent.id,
+
+      event_type:
+        automationEvent.event_type,
+
+      organization_id:
+        automationEvent.organization_id,
+
+      lead_id:
+        automationEvent.lead_id,
+
+      contact_id:
+        automationEvent.contact_id,
+
+      appointment_id:
+        automationEvent.appointment_id,
+
+      estimate_id:
+        automationEvent.estimate_id,
+
+      job_id:
+        automationEvent.job_id,
+
+      payment_id:
+        automationEvent.payment_id,
+
+      review_id:
+        automationEvent.review_id,
+
+      payload:
+        automationEvent.payload,
+
+      status:
+        automationEvent.status,
+
+      created_at:
+        automationEvent.created_at,
+    };
+
+    /*
+     * Send event to the correct n8n workflow.
      */
     let n8nResponse: Response;
 
@@ -201,38 +301,9 @@ export async function POST(request: Request) {
             "Content-Type":
               "application/json",
           },
-          body: JSON.stringify({
-            event_id: event.id,
-            event_type:
-              event.event_type,
-            organization_id:
-              event.organization_id,
-
-            lead_id:
-              event.lead_id,
-            contact_id:
-              event.contact_id,
-
-            appointment_id:
-              event.appointment_id,
-            estimate_id:
-              event.estimate_id,
-            job_id:
-              event.job_id,
-            payment_id:
-              event.payment_id,
-            review_id:
-              event.review_id,
-
-            payload:
-              event.payload,
-
-            status:
-              event.status,
-
-            created_at:
-              event.created_at,
-          }),
+          body: JSON.stringify(
+            n8nPayload
+          ),
         }
       );
     } catch (fetchError) {
@@ -248,37 +319,48 @@ export async function POST(request: Request) {
               ? fetchError.message
               : "Unable to connect to n8n.",
           stage: "n8n_fetch",
+          event_type:
+            automationEvent.event_type,
         },
         { status: 502 }
       );
     }
 
     /*
-     * Read n8n response
+     * Read n8n response.
      */
     const n8nResponseText =
       await n8nResponse.text();
 
-    console.log(
-      "n8n response:",
-      {
-        status:
-          n8nResponse.status,
-        ok:
-          n8nResponse.ok,
-        body:
-          n8nResponseText,
-      }
-    );
+    console.log("n8n response:", {
+      event_type:
+        automationEvent.event_type,
+
+      status:
+        n8nResponse.status,
+
+      ok:
+        n8nResponse.ok,
+
+      body:
+        n8nResponseText,
+    });
 
     if (!n8nResponse.ok) {
       return NextResponse.json(
         {
           error:
             "n8n webhook request failed.",
-          stage: "n8n_response",
+
+          stage:
+            "n8n_response",
+
+          event_type:
+            automationEvent.event_type,
+
           n8n_status:
             n8nResponse.status,
+
           n8n_response:
             n8nResponseText,
         },
@@ -287,20 +369,32 @@ export async function POST(request: Request) {
     }
 
     console.log(
-      "=== TRACKPR AUTOMATION DELIVERY SUCCESS ==="
+      "=== TRACKPR AUTOMATION DISPATCH SUCCESS ==="
     );
 
     return NextResponse.json({
       success: true,
-      event_id: event.id,
+
+      delivered: true,
+
+      event_id:
+        automationEvent.id,
+
+      event_type:
+        automationEvent.event_type,
+
+      webhook_environment_variable:
+        environmentVariable,
+
       n8n_status:
         n8nResponse.status,
+
       n8n_response:
         n8nResponseText,
     });
   } catch (error) {
     console.error(
-      "AUTOMATION EVENT DELIVERY ERROR:",
+      "AUTOMATION DISPATCH ERROR:",
       error
     );
 
@@ -309,7 +403,7 @@ export async function POST(request: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to deliver automation event.",
+            : "Unable to dispatch automation event.",
         stage: "unexpected_error",
       },
       { status: 500 }

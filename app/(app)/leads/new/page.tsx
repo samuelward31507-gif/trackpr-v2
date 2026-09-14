@@ -48,7 +48,10 @@ export default function NewLeadPage() {
     }
 
     /*
-     * Get user's organization
+     * Get user's organization.
+     *
+     * Limit to one membership so Supabase does not
+     * fail when multiple membership rows exist.
      */
     const {
       data: membership,
@@ -57,9 +60,17 @@ export default function NewLeadPage() {
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", user.id)
+      .limit(1)
       .maybeSingle();
 
-    if (membershipError || !membership) {
+    if (membershipError) {
+      console.error(
+        "Error loading organization membership:",
+        membershipError
+      );
+    }
+
+    if (membershipError || !membership?.organization_id) {
       setErrorMessage(
         "We couldn't find your workspace. Please refresh and try again."
       );
@@ -252,6 +263,7 @@ export default function NewLeadPage() {
 
           first_name:
             firstName.trim() || null,
+
           last_name:
             lastName.trim() || null,
 
