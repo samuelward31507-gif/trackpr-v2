@@ -355,9 +355,18 @@ export default function CalendarClient({
     try {
       const lead = leadMap.get(appointment.lead_id ?? "");
 
-      const { data: event, error: eventError } = await supabase
+      /*
+       * Generate the event ID ourselves.
+       *
+       * This lets us insert the event without requiring a SELECT
+       * permission on automation_events.
+       */
+      const eventId = crypto.randomUUID();
+
+      const { error: eventError } = await supabase
         .from("automation_events")
         .insert({
+          id: eventId,
           organization_id: organizationId,
           event_type: eventType,
           lead_id: appointment.lead_id,
@@ -382,24 +391,25 @@ export default function CalendarClient({
             email: lead?.email ?? null,
           },
           status: "pending",
-        })
-        .select("id")
-        .single();
+        });
 
       if (eventError) {
         console.error(
           "Appointment automation event creation failed:",
           eventError
         );
+
+        setError(
+          `Appointment created, but automation event failed: ${eventError.message}`
+        );
+
         return;
       }
 
-      if (!event?.id) {
-        console.error(
-          "Appointment automation event was created without an event id."
-        );
-        return;
-      }
+      console.log("Appointment automation event created successfully", {
+        event_id: eventId,
+        event_type: eventType,
+      });
 
       const response = await fetch("/api/automation/events", {
         method: "POST",
@@ -407,7 +417,7 @@ export default function CalendarClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          event_id: event.id,
+          event_id: eventId,
           organization_id: organizationId,
         }),
       });
@@ -419,11 +429,18 @@ export default function CalendarClient({
           "Appointment automation event dispatch failed:",
           result
         );
+
+        setError(
+          `Appointment created and event saved, but automation dispatch failed: ${
+            result?.error ?? "Unknown dispatch error"
+          }`
+        );
+
         return;
       }
 
       console.log("Appointment automation event delivered successfully", {
-        event_id: event.id,
+        event_id: eventId,
         event_type: eventType,
         n8n_response: result,
       });
@@ -431,6 +448,14 @@ export default function CalendarClient({
       console.error(
         "Unexpected appointment automation dispatch error:",
         dispatchError
+      );
+
+      setError(
+        `Appointment created, but automation failed: ${
+          dispatchError instanceof Error
+            ? dispatchError.message
+            : "Unknown error"
+        }`
       );
     }
   }
@@ -496,12 +521,6 @@ export default function CalendarClient({
           appointment.id === selectedAppointment.id ? data : appointment
         )
       );
-
-      /*
-       * Appointment edits do not dispatch the appointment_booked event.
-       * The booking event is only emitted when a brand-new appointment
-       * is created, preventing duplicate reminder triggers.
-       */
     } else {
       const { data, error: insertError } = await supabase
         .from("appointments")
@@ -526,9 +545,9 @@ export default function CalendarClient({
       );
 
       /*
-       * NEW:
-       * Create and dispatch the automation event only after the
-       * appointment itself has successfully been created.
+       * Only brand-new appointments trigger appointment_booked.
+       * Editing an existing appointment does not create another
+       * booking event and therefore will not duplicate reminders.
        */
       await dispatchAppointmentEvent(data, "appointment_booked");
     }
@@ -693,14 +712,8 @@ export default function CalendarClient({
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <CalendarDays size={17} />
-              </div>
-
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Scheduled
-              </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <CalendarDays size={17} />
             </div>
 
             <div className="mt-4">
