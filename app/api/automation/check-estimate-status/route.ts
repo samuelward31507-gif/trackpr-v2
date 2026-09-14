@@ -68,27 +68,16 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const { data: estimate, error } = await supabase
-      .from("estimates")
-      .select(
-        `
-          id,
-          organization_id,
-          lead_id,
-          title,
-          amount,
-          status,
-          created_at,
-          updated_at
-        `
-      )
-      .eq("id", estimateId)
-      .eq("organization_id", organizationId)
-      .limit(1)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc(
+      "get_estimate_status",
+      {
+        p_estimate_id: estimateId,
+        p_organization_id: organizationId,
+      }
+    );
 
     if (error) {
-      console.error("Check estimate status error:", error);
+      console.error("Estimate status RPC error:", error);
 
       return NextResponse.json(
         {
@@ -98,6 +87,8 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const estimate = Array.isArray(data) ? data[0] : data;
 
     if (!estimate) {
       return NextResponse.json(
@@ -115,9 +106,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       found: true,
+
       estimate_id: estimate.id,
       organization_id: estimate.organization_id,
       lead_id: estimate.lead_id,
+
       title: estimate.title,
       amount: estimate.amount,
       status: estimate.status,
@@ -138,7 +131,10 @@ export async function GET(request: NextRequest) {
       updated_at: estimate.updated_at,
     });
   } catch (error) {
-    console.error("Unexpected check estimate status error:", error);
+    console.error(
+      "Unexpected check estimate status error:",
+      error
+    );
 
     return NextResponse.json(
       {
