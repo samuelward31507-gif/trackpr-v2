@@ -13,12 +13,19 @@ export default async function SettingsPage() {
     redirect("/login");
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("organization_id, role")
     .eq("user_id", user.id)
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "Settings membership error:",
+      membershipError
+    );
+  }
 
   if (!membership?.organization_id) {
     redirect("/dashboard");
@@ -26,7 +33,7 @@ export default async function SettingsPage() {
 
   const organizationId = membership.organization_id;
 
-  const [{ data: organization }, { data: settings }] =
+  const [{ data: organization, error: organizationError }, { data: settings, error: settingsError }] =
     await Promise.all([
       supabase
         .from("organizations")
@@ -63,6 +70,20 @@ export default async function SettingsPage() {
         .eq("organization_id", organizationId)
         .maybeSingle(),
     ]);
+
+  if (organizationError) {
+    console.error(
+      "Settings organization error:",
+      organizationError
+    );
+  }
+
+  if (settingsError) {
+    console.error(
+      "Settings organization settings error:",
+      settingsError
+    );
+  }
 
   if (!organization) {
     redirect("/dashboard");

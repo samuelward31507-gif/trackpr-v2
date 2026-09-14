@@ -13,12 +13,19 @@ export default async function ReportingPage() {
     redirect("/login");
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "Reporting membership error:",
+      membershipError
+    );
+  }
 
   if (!membership?.organization_id) {
     redirect("/dashboard");
@@ -35,7 +42,9 @@ export default async function ReportingPage() {
   ] = await Promise.all([
     supabase
       .from("leads")
-      .select("id, status, source, created_at, updated_at")
+      .select(
+        "id, status, source, created_at, updated_at"
+      )
       .eq("organization_id", organizationId),
 
     supabase
@@ -68,23 +77,38 @@ export default async function ReportingPage() {
   ]);
 
   if (leadsResult.error) {
-    console.error("Reporting leads error:", leadsResult.error);
+    console.error(
+      "Reporting leads error:",
+      leadsResult.error
+    );
   }
 
   if (estimatesResult.error) {
-    console.error("Reporting estimates error:", estimatesResult.error);
+    console.error(
+      "Reporting estimates error:",
+      estimatesResult.error
+    );
   }
 
   if (jobsResult.error) {
-    console.error("Reporting jobs error:", jobsResult.error);
+    console.error(
+      "Reporting jobs error:",
+      jobsResult.error
+    );
   }
 
   if (paymentsResult.error) {
-    console.error("Reporting payments error:", paymentsResult.error);
+    console.error(
+      "Reporting payments error:",
+      paymentsResult.error
+    );
   }
 
   if (reviewsResult.error) {
-    console.error("Reporting reviews error:", reviewsResult.error);
+    console.error(
+      "Reporting reviews error:",
+      reviewsResult.error
+    );
   }
 
   return (

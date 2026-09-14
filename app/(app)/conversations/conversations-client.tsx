@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   Send,
+  Sparkles,
   UserRound,
   X,
 } from "lucide-react";
@@ -163,8 +164,7 @@ function formatMessageDate(value: string) {
     month: "long",
     day: "numeric",
     year:
-      date.getFullYear() !==
-      now.getFullYear()
+      date.getFullYear() !== now.getFullYear()
         ? "numeric"
         : undefined,
   });
@@ -368,8 +368,7 @@ export default function ConversationsClient({
         const matchesFilter =
           filter === "all" ||
           (filter === "unread" &&
-            conversation.unread_count >
-              0) ||
+            conversation.unread_count > 0) ||
           conversation.status === filter;
 
         return (
@@ -415,11 +414,15 @@ export default function ConversationsClient({
     [conversations]
   );
 
-  /*
-   * Automatically open a conversation when the URL contains:
-   *
-   * /conversations?conversation=UUID
-   */
+  const openTotal = useMemo(
+    () =>
+      conversations.filter(
+        (conversation) =>
+          conversation.status === "open"
+      ).length,
+    [conversations]
+  );
+
   useEffect(() => {
     const params =
       new URLSearchParams(
@@ -803,12 +806,21 @@ export default function ConversationsClient({
   function renderMessages() {
     if (selectedMessages.length === 0) {
       return (
-        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">
-            <MessageSquare size={22} />
+        <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center">
+          <div className="relative mb-5">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">
+              <MessageSquare
+                size={24}
+                strokeWidth={1.7}
+              />
+            </div>
+
+            <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white">
+              <Plus size={11} />
+            </div>
           </div>
 
-          <p className="text-sm font-semibold text-slate-800">
+          <p className="text-sm font-semibold text-slate-900">
             No messages yet
           </p>
 
@@ -841,12 +853,16 @@ export default function ConversationsClient({
             return (
               <div key={message.id}>
                 {showDate && (
-                  <div className="mb-5 flex items-center justify-center">
-                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-medium text-slate-400 shadow-sm">
+                  <div className="mb-6 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-slate-200" />
+
+                    <div className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold text-slate-400 shadow-sm">
                       {formatMessageDate(
                         message.sent_at
                       )}
                     </div>
+
+                    <div className="h-px flex-1 bg-slate-200" />
                   </div>
                 )}
 
@@ -866,17 +882,26 @@ export default function ConversationsClient({
                   >
                     {!outbound &&
                       message.sender_name && (
-                        <p className="mb-1 px-1 text-[10px] font-medium text-slate-400">
-                          {
-                            message.sender_name
-                          }
-                        </p>
+                        <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[8px] font-bold text-slate-600">
+                            {getInitials(
+                              selectedConversation?.lead ??
+                                null
+                            )}
+                          </div>
+
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            {
+                              message.sender_name
+                            }
+                          </p>
+                        </div>
                       )}
 
                     <div
-                      className={`rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      className={`rounded-2xl px-4 py-3 text-sm leading-6 transition ${
                         outbound
-                          ? "rounded-br-md bg-slate-900 text-white shadow-sm"
+                          ? "rounded-br-md bg-slate-900 text-white shadow-md shadow-slate-900/10"
                           : "rounded-bl-md border border-slate-200 bg-white text-slate-800 shadow-sm"
                       }`}
                     >
@@ -931,34 +956,57 @@ export default function ConversationsClient({
   }
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] min-h-[650px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {/* HEADER */}
+    <div className="flex h-[calc(100vh-2rem)] min-h-[650px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_40px_rgba(15,23,42,0.06)]">
+      {/* TOP HEADER */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-            <MessageSquare size={18} />
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
+            <MessageSquare
+              size={18}
+              strokeWidth={1.8}
+            />
+
+            {unreadTotal > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-slate-900 px-1 text-[8px] font-bold text-white">
+                {unreadTotal > 9
+                  ? "9+"
+                  : unreadTotal}
+              </span>
+            )}
           </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">
                 Conversations
               </h1>
 
-              {unreadTotal > 0 && (
-                <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 sm:inline-flex">
-                  {unreadTotal > 99
-                    ? "99+"
-                    : unreadTotal}{" "}
-                  unread
-                </span>
-              )}
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 md:inline-flex">
+                Inbox
+              </span>
             </div>
 
-            <p className="hidden text-xs text-slate-500 sm:block">
-              Manage customer communication
-              in one place
-            </p>
+            <div className="mt-0.5 hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+              <span>
+                {openTotal} open
+              </span>
+
+              <span className="text-slate-300">
+                •
+              </span>
+
+              <span>
+                {unreadTotal} unread
+              </span>
+
+              <span className="text-slate-300">
+                •
+              </span>
+
+              <span>
+                {conversations.length} total
+              </span>
+            </div>
           </div>
         </div>
 
@@ -970,7 +1018,7 @@ export default function ConversationsClient({
           disabled={
             creatingConversation
           }
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-slate-800 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
         >
           <Plus size={16} />
 
@@ -995,7 +1043,7 @@ export default function ConversationsClient({
                 "list"
               )
             }
-            className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/60 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 lg:hidden"
+            className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 lg:hidden"
           >
             <ArrowLeft size={15} />
             Back to conversations
@@ -1003,7 +1051,7 @@ export default function ConversationsClient({
         )}
 
       <div className="flex min-h-0 flex-1">
-        {/* CONVERSATION LIST */}
+        {/* LEFT CONVERSATION LIST */}
         <aside
           className={`w-full shrink-0 border-r border-slate-200 bg-slate-50/60 lg:flex lg:w-[330px] xl:w-[370px] ${
             mobileView === "list"
@@ -1011,8 +1059,8 @@ export default function ConversationsClient({
               : "hidden"
           } flex-col`}
         >
-          {/* SEARCH / FILTERS */}
-          <div className="shrink-0 border-b border-slate-200 p-4">
+          {/* SEARCH */}
+          <div className="shrink-0 border-b border-slate-200 bg-white/70 p-4">
             <div className="relative">
               <Search
                 size={16}
@@ -1027,7 +1075,7 @@ export default function ConversationsClient({
                   )
                 }
                 placeholder="Search conversations..."
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
               />
 
               {search && (
@@ -1043,6 +1091,7 @@ export default function ConversationsClient({
               )}
             </div>
 
+            {/* FILTERS */}
             <div className="mt-3 flex gap-1 overflow-x-auto pb-0.5">
               {(
                 [
@@ -1061,10 +1110,10 @@ export default function ConversationsClient({
                         value
                       )
                     }
-                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       filter === value
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-500 hover:bg-white hover:text-slate-800"
+                        ? "bg-slate-950 text-white shadow-sm"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                     }`}
                   >
                     {label}
@@ -1098,17 +1147,17 @@ export default function ConversationsClient({
             {filteredConversations.length ===
             0 ? (
               <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">
                   {search ||
                   filter !==
                     "all" ? (
-                    <Search size={20} />
+                    <Search size={21} />
                   ) : (
-                    <Inbox size={20} />
+                    <Inbox size={21} />
                   )}
                 </div>
 
-                <h3 className="text-sm font-semibold text-slate-800">
+                <h3 className="text-sm font-semibold text-slate-900">
                   {search ||
                   filter !==
                     "all"
@@ -1137,7 +1186,7 @@ export default function ConversationsClient({
                         "all"
                       );
                     }}
-                    className="mt-4 text-xs font-semibold text-slate-700 underline underline-offset-4 hover:text-slate-950"
+                    className="mt-4 text-xs font-semibold text-slate-700 underline underline-offset-4 transition hover:text-slate-950"
                   >
                     Clear filters
                   </button>
@@ -1165,23 +1214,23 @@ export default function ConversationsClient({
                           conversation
                         )
                       }
-                      className={`group relative flex w-full gap-3 border-b border-slate-200/80 px-4 py-3.5 text-left transition ${
+                      className={`group relative flex w-full gap-3 border-b border-slate-200/80 px-4 py-3.5 text-left transition duration-150 ${
                         isSelected
                           ? "bg-white"
                           : "hover:bg-white/80"
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute inset-y-0 left-0 w-0.5 bg-slate-900" />
+                        <span className="absolute inset-y-0 left-0 w-[3px] bg-slate-950" />
                       )}
 
                       <div
-                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold transition ${
                           isSelected
-                            ? "bg-slate-900 text-white"
+                            ? "bg-slate-950 text-white shadow-sm"
                             : isUnread
                               ? "bg-slate-800 text-white"
-                              : "bg-slate-200 text-slate-700"
+                              : "bg-slate-200 text-slate-700 group-hover:bg-slate-300"
                         }`}
                       >
                         {getInitials(
@@ -1228,7 +1277,7 @@ export default function ConversationsClient({
                             size={11}
                           />
 
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                             {channelLabel(
                               conversation.channel
                             )}
@@ -1240,7 +1289,7 @@ export default function ConversationsClient({
                           />
 
                           <span
-                            className={`text-[10px] font-medium ${
+                            className={`text-[10px] font-semibold ${
                               conversation.status ===
                               "open"
                                 ? "text-emerald-600"
@@ -1268,7 +1317,7 @@ export default function ConversationsClient({
 
                       {isUnread && (
                         <div className="flex shrink-0 items-center">
-                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
+                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-bold text-white">
                             {conversation.unread_count >
                             99
                               ? "99+"
@@ -1284,7 +1333,7 @@ export default function ConversationsClient({
           </div>
         </aside>
 
-        {/* CENTER */}
+        {/* CENTER CONVERSATION */}
         <main
           className={`min-w-0 flex-1 ${
             mobileView ===
@@ -1295,8 +1344,17 @@ export default function ConversationsClient({
         >
           {!selectedConversation ? (
             <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                <MessageSquare size={24} />
+              <div className="relative mb-5">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 ring-1 ring-slate-200">
+                  <MessageSquare
+                    size={25}
+                    strokeWidth={1.6}
+                  />
+                </div>
+
+                <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950 text-white">
+                  <ChevronRight size={13} />
+                </div>
               </div>
 
               <h2 className="text-base font-semibold text-slate-900">
@@ -1313,13 +1371,13 @@ export default function ConversationsClient({
           ) : (
             <>
               {/* CONVERSATION HEADER */}
-              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-5">
+              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       selectedConversation.unread_count >
                       0
-                        ? "bg-slate-900 text-white"
+                        ? "bg-slate-950 text-white"
                         : "bg-slate-100 text-slate-700"
                     }`}
                   >
@@ -1330,14 +1388,14 @@ export default function ConversationsClient({
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h2 className="truncate text-sm font-semibold text-slate-900">
+                      <h2 className="truncate text-sm font-bold text-slate-950">
                         {getLeadName(
                           selectedConversation.lead
                         )}
                       </h2>
 
                       <span
-                        className={`hidden rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 sm:inline-flex ${statusClasses(
+                        className={`hidden rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 sm:inline-flex ${statusClasses(
                           selectedConversation.status
                         )}`}
                       >
@@ -1392,7 +1450,7 @@ export default function ConversationsClient({
                         ? "Close conversation"
                         : "Reopen conversation"
                     }
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800"
                   >
                     {selectedConversation.status ===
                     "open" ? (
@@ -1410,13 +1468,30 @@ export default function ConversationsClient({
                       openEditConversation
                     }
                     title="Edit conversation"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800"
                   >
                     <MoreHorizontal
                       size={18}
                     />
                   </button>
                 </div>
+              </div>
+
+              {/* AI / AUTOMATION FOUNDATION */}
+              <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-2 sm:px-5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900 text-white">
+                  <Sparkles size={12} />
+                </div>
+
+                <p className="text-[10px] font-medium text-slate-500">
+                  Trackpr intelligence
+                </p>
+
+                <span className="h-1 w-1 rounded-full bg-slate-300" />
+
+                <p className="text-[10px] text-slate-400">
+                  Automation-ready conversation
+                </p>
               </div>
 
               {/* SUBJECT */}
@@ -1434,7 +1509,7 @@ export default function ConversationsClient({
               )}
 
               {/* MESSAGES */}
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5 sm:px-6">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-4 py-5 sm:px-6">
                 {renderMessages()}
               </div>
 
@@ -1445,7 +1520,7 @@ export default function ConversationsClient({
                 }
                 className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4"
               >
-                <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 transition focus-within:border-slate-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-100">
+                <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm transition focus-within:border-slate-300 focus-within:bg-white focus-within:shadow-sm focus-within:ring-2 focus-within:ring-slate-100">
                   <textarea
                     value={messageText}
                     onChange={(
@@ -1488,7 +1563,7 @@ export default function ConversationsClient({
                       !messageText.trim() ||
                       sending
                     }
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm transition hover:bg-slate-800 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Send
                       size={16}
@@ -1520,20 +1595,20 @@ export default function ConversationsClient({
           {selectedConversation ? (
             <>
               {/* CONTACT HEADER */}
-              <div className="border-b border-slate-200 px-5 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              <div className="border-b border-slate-200 bg-white px-5 py-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
                   Customer
                 </p>
 
                 <div className="mt-3 flex items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700 ring-4 ring-slate-50">
                     {getInitials(
                       selectedConversation.lead
                     )}
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">
+                    <p className="truncate text-sm font-bold text-slate-950">
                       {getLeadName(
                         selectedConversation.lead
                       )}
@@ -1544,7 +1619,7 @@ export default function ConversationsClient({
                       <div className="mt-1 flex items-center gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
 
-                        <p className="text-xs capitalize text-slate-500">
+                        <p className="text-[10px] font-medium capitalize text-slate-500">
                           {
                             selectedConversation
                               .lead
@@ -1561,28 +1636,29 @@ export default function ConversationsClient({
                 <div className="space-y-6">
                   {/* CONTACT DETAILS */}
                   <div>
-                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
                       Contact Details
                     </p>
 
-                    <div className="space-y-3">
+                    <div className="space-y-1">
                       {selectedConversation
                         .lead?.phone && (
                         <a
                           href={`tel:${selectedConversation.lead.phone}`}
-                          className="flex items-start gap-2.5 rounded-lg transition hover:bg-white"
+                          className="flex items-start gap-2.5 rounded-xl p-2 transition hover:bg-white"
                         >
-                          <Phone
-                            size={15}
-                            className="mt-0.5 shrink-0 text-slate-400"
-                          />
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                            <Phone
+                              size={13}
+                            />
+                          </div>
 
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-slate-400">
+                          <div className="min-w-0 pt-0.5">
+                            <p className="text-[9px] font-medium uppercase tracking-wide text-slate-400">
                               Phone
                             </p>
 
-                            <p className="break-all text-xs font-medium text-slate-700 hover:text-slate-950">
+                            <p className="mt-0.5 break-all text-[11px] font-semibold text-slate-700">
                               {
                                 selectedConversation
                                   .lead
@@ -1597,19 +1673,20 @@ export default function ConversationsClient({
                         .lead?.email && (
                         <a
                           href={`mailto:${selectedConversation.lead.email}`}
-                          className="flex items-start gap-2.5 rounded-lg transition hover:bg-white"
+                          className="flex items-start gap-2.5 rounded-xl p-2 transition hover:bg-white"
                         >
-                          <Mail
-                            size={15}
-                            className="mt-0.5 shrink-0 text-slate-400"
-                          />
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                            <Mail
+                              size={13}
+                            />
+                          </div>
 
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-slate-400">
+                          <div className="min-w-0 pt-0.5">
+                            <p className="text-[9px] font-medium uppercase tracking-wide text-slate-400">
                               Email
                             </p>
 
-                            <p className="break-all text-xs font-medium text-slate-700 hover:text-slate-950">
+                            <p className="mt-0.5 break-all text-[11px] font-semibold text-slate-700">
                               {
                                 selectedConversation
                                   .lead
@@ -1624,17 +1701,19 @@ export default function ConversationsClient({
                         .lead?.phone &&
                         !selectedConversation
                           .lead?.email && (
-                          <p className="text-xs text-slate-400">
-                            No contact details
-                            available.
-                          </p>
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center">
+                            <p className="text-[10px] font-medium text-slate-400">
+                              No contact details
+                              available.
+                            </p>
+                          </div>
                         )}
                     </div>
                   </div>
 
                   {/* CRM */}
                   <div>
-                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
                       CRM
                     </p>
 
@@ -1643,7 +1722,7 @@ export default function ConversationsClient({
                         <>
                           <a
                             href={`/leads/${selectedConversation.lead.id}`}
-                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                            className="group flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:shadow-md"
                           >
                             <span className="flex items-center gap-2">
                               <UserRound
@@ -1656,13 +1735,13 @@ export default function ConversationsClient({
 
                             <ChevronRight
                               size={14}
-                              className="text-slate-400"
+                              className="text-slate-400 transition group-hover:translate-x-0.5"
                             />
                           </a>
 
                           <a
                             href={`/leads/${selectedConversation.lead.id}`}
-                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                            className="group flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:shadow-md"
                           >
                             <span className="flex items-center gap-2">
                               <MessageSquare
@@ -1675,7 +1754,7 @@ export default function ConversationsClient({
 
                             <ChevronRight
                               size={14}
-                              className="text-slate-400"
+                              className="text-slate-400 transition group-hover:translate-x-0.5"
                             />
                           </a>
                         </>
@@ -1683,12 +1762,13 @@ export default function ConversationsClient({
 
                       {!selectedConversation.lead && (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center">
-                          <UserRound
-                            size={18}
-                            className="mx-auto text-slate-300"
-                          />
+                          <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-300">
+                            <UserRound
+                              size={16}
+                            />
+                          </div>
 
-                          <p className="mt-2 text-xs font-medium text-slate-600">
+                          <p className="mt-2 text-xs font-semibold text-slate-600">
                             No CRM contact
                           </p>
 
@@ -1704,17 +1784,17 @@ export default function ConversationsClient({
 
                   {/* CONVERSATION INFO */}
                   <div>
-                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
                       Conversation
                     </p>
 
-                    <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">
+                        <span className="text-[11px] text-slate-500">
                           Channel
                         </span>
 
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
                           <ChannelIcon
                             channel={
                               selectedConversation.channel
@@ -1729,12 +1809,12 @@ export default function ConversationsClient({
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">
+                        <span className="text-[11px] text-slate-500">
                           Status
                         </span>
 
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${statusClasses(
+                          className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ${statusClasses(
                             selectedConversation.status
                           )}`}
                         >
@@ -1745,16 +1825,48 @@ export default function ConversationsClient({
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">
+                        <span className="text-[11px] text-slate-500">
                           Messages
                         </span>
 
-                        <span className="text-xs font-semibold text-slate-700">
+                        <span className="text-[11px] font-bold text-slate-700">
                           {
                             selectedMessages.length
                           }
                         </span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* AUTOMATION FOUNDATION */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-950 p-3.5 text-white shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
+                        <Sparkles
+                          size={14}
+                        />
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold">
+                          Trackpr Intelligence
+                        </p>
+
+                        <p className="text-[9px] text-slate-400">
+                          Automation layer ready
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 h-px bg-white/10" />
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+
+                      <span className="text-[9px] font-medium text-slate-300">
+                        Conversation available
+                        for automation
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1796,15 +1908,23 @@ export default function ConversationsClient({
               }
             }}
           >
-            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
               {/* MODAL HEADER */}
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Edit Conversation
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950 text-white">
+                      <Edit3
+                        size={13}
+                      />
+                    </div>
 
-                  <p className="mt-0.5 text-xs text-slate-500">
+                    <h2 className="text-base font-bold text-slate-950">
+                      Edit Conversation
+                    </h2>
+                  </div>
+
+                  <p className="mt-1 pl-9 text-xs text-slate-500">
                     Update conversation
                     details and status.
                   </p>
@@ -1823,7 +1943,7 @@ export default function ConversationsClient({
                 </button>
               </div>
 
-              {/* MODAL FORM */}
+              {/* FORM */}
               <form
                 onSubmit={
                   saveConversationEdits
@@ -1831,7 +1951,7 @@ export default function ConversationsClient({
                 className="space-y-5 p-5"
               >
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
                     Subject
                   </label>
 
@@ -1848,12 +1968,12 @@ export default function ConversationsClient({
                       )
                     }
                     placeholder="Conversation subject"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
                     Channel
                   </label>
 
@@ -1869,7 +1989,7 @@ export default function ConversationsClient({
                           .value
                       )
                     }
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   >
                     <option value="sms">
                       SMS
@@ -1890,7 +2010,7 @@ export default function ConversationsClient({
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
                     Status
                   </label>
 
@@ -1906,7 +2026,7 @@ export default function ConversationsClient({
                           .value
                       )
                     }
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   >
                     <option value="open">
                       Open
@@ -1942,9 +2062,7 @@ export default function ConversationsClient({
                     }
                     className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Edit3
-                      size={15}
-                    />
+                    <Check size={15} />
 
                     {savingConversation
                       ? "Saving..."

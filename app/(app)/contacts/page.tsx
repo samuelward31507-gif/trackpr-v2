@@ -12,12 +12,20 @@ export default async function ContactsPage() {
     return null;
   }
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "Contacts membership error:",
+      membershipError
+    );
+  }
 
   if (!membership?.organization_id) {
     return null;
@@ -44,7 +52,9 @@ export default async function ContactsPage() {
       `
     )
     .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: false,
+    });
 
   if (error) {
     console.error("Error loading contacts:", error);

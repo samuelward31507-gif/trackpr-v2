@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Edit3,
   Mail,
   MapPin,
   Phone,
@@ -88,6 +87,12 @@ function formatDate(value: string) {
   });
 }
 
+function formatStatus(status: string) {
+  return status
+    .replace("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function toDateTimeLocal(value: string) {
   const date = new Date(value);
 
@@ -148,6 +153,44 @@ function emptyForm(): FormState {
     end_at: toDateTimeLocal(end.toISOString()),
     notes: "",
   };
+}
+
+function getStatusClasses(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+    case "completed":
+      return "border-blue-200 bg-blue-50 text-blue-700";
+
+    case "cancelled":
+      return "border-red-200 bg-red-50 text-red-700";
+
+    case "no_show":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-600";
+  }
+}
+
+function getCalendarAppointmentClasses(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100";
+
+    case "completed":
+      return "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100";
+
+    case "cancelled":
+      return "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100";
+
+    case "no_show":
+      return "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100";
+
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-slate-100";
+  }
 }
 
 export default function CalendarClient({
@@ -222,6 +265,29 @@ export default function CalendarClient({
       .slice(0, 6);
   }, [filteredAppointments]);
 
+  const monthAppointmentCount = useMemo(() => {
+    return filteredAppointments.filter((appointment) => {
+      const date = new Date(appointment.start_at);
+
+      return (
+        date.getFullYear() === currentMonth.getFullYear() &&
+        date.getMonth() === currentMonth.getMonth()
+      );
+    }).length;
+  }, [filteredAppointments, currentMonth]);
+
+  const confirmedCount = useMemo(() => {
+    return filteredAppointments.filter(
+      (appointment) => appointment.status === "confirmed"
+    ).length;
+  }, [filteredAppointments]);
+
+  const scheduledCount = useMemo(() => {
+    return filteredAppointments.filter(
+      (appointment) => appointment.status === "scheduled"
+    ).length;
+  }, [filteredAppointments]);
+
   function appointmentsForDay(day: Date) {
     return filteredAppointments
       .filter((appointment) =>
@@ -229,7 +295,8 @@ export default function CalendarClient({
       )
       .sort(
         (a, b) =>
-          new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
+          new Date(a.start_at).getTime() -
+          new Date(b.start_at).getTime()
       );
   }
 
@@ -297,6 +364,11 @@ export default function CalendarClient({
 
     const start = new Date(form.start_at);
     const end = new Date(form.end_at);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setError("Please enter valid appointment times.");
+      return;
+    }
 
     if (end <= start) {
       setError("The end time must be after the start time.");
@@ -438,41 +510,141 @@ export default function CalendarClient({
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
       <div className="mx-auto max-w-[1600px]">
         {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-                <CalendarDays size={21} />
+        <div className="mb-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                  <CalendarDays size={22} />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                      Calendar
+                    </h1>
+
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Schedule
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Manage appointments, customer visits, and your team&apos;s
+                    schedule.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => openCreate()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md"
+            >
+              <Plus size={18} />
+              New Appointment
+            </button>
+          </div>
+        </div>
+
+        {/* KPI row */}
+        <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <CalendarDays size={17} />
               </div>
 
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                  Calendar
-                </h1>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                This Month
+              </span>
+            </div>
 
-                <p className="text-sm text-slate-500">
-                  Manage appointments and your schedule.
-                </p>
+            <div className="mt-4">
+              <div className="text-2xl font-bold tracking-tight text-slate-900">
+                {monthAppointmentCount}
               </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Appointments scheduled
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={() => openCreate()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            <Plus size={18} />
-            New Appointment
-          </button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Clock3 size={17} />
+              </div>
+
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Confirmed
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-2xl font-bold tracking-tight text-slate-900">
+                {confirmedCount}
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Customer-confirmed appointments
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <CalendarDays size={17} />
+              </div>
+
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Scheduled
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-2xl font-bold tracking-tight text-slate-900">
+                {scheduledCount}
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Appointments awaiting confirmation
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <User size={17} />
+              </div>
+
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Upcoming
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-2xl font-bold tracking-tight text-slate-900">
+                {upcomingAppointments.length}
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Next appointments in view
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Controls */}
         <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={previousMonth}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
                 aria-label="Previous month"
               >
                 <ChevronLeft size={18} />
@@ -480,7 +652,7 @@ export default function CalendarClient({
 
               <button
                 onClick={nextMonth}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
                 aria-label="Next month"
               >
                 <ChevronRight size={18} />
@@ -488,12 +660,14 @@ export default function CalendarClient({
 
               <button
                 onClick={goToToday}
-                className="ml-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="ml-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 Today
               </button>
 
-              <h2 className="ml-2 text-lg font-bold text-slate-900">
+              <div className="ml-1 h-6 w-px bg-slate-200" />
+
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">
                 {monthLabel}
               </h2>
             </div>
@@ -509,24 +683,20 @@ export default function CalendarClient({
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search appointments..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100 sm:w-64"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 sm:w-64"
                 />
               </div>
 
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-400"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               >
                 <option value="all">All statuses</option>
 
                 {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
-                    {status
-                      .replace("_", " ")
-                      .replace(/\b\w/g, (letter) =>
-                        letter.toUpperCase()
-                      )}
+                    {formatStatus(status)}
                   </option>
                 ))}
               </select>
@@ -534,16 +704,16 @@ export default function CalendarClient({
           </div>
         </div>
 
-        {/* Main content */}
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Main */}
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* Calendar */}
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {/* Weekday header */}
-            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+            {/* Weekdays */}
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80">
               {WEEKDAYS.map((day) => (
                 <div
                   key={day}
-                  className="px-2 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-500"
+                  className="border-r border-slate-200 px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 last:border-r-0"
                 >
                   {day}
                 </div>
@@ -564,16 +734,18 @@ export default function CalendarClient({
                   <div
                     key={dateKey(day)}
                     onDoubleClick={() => openCreate(day)}
-                    className={`group relative min-h-[125px] border-b border-r border-slate-200 p-2 transition hover:bg-slate-50 ${
-                      !isCurrentMonth ? "bg-slate-50/60" : "bg-white"
+                    className={`group relative min-h-[145px] border-b border-r border-slate-200 p-2 transition ${
+                      !isCurrentMonth
+                        ? "bg-slate-50/60"
+                        : "bg-white hover:bg-slate-50/50"
                     }`}
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <button
                         onClick={() => openCreate(day)}
-                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
+                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition ${
                           isToday
-                            ? "bg-slate-900 text-white"
+                            ? "bg-slate-900 text-white shadow-sm"
                             : isCurrentMonth
                             ? "text-slate-700 hover:bg-slate-100"
                             : "text-slate-400 hover:bg-slate-100"
@@ -584,14 +756,14 @@ export default function CalendarClient({
 
                       <button
                         onClick={() => openCreate(day)}
-                        className="hidden rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 group-hover:block"
+                        className="hidden rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-700 group-hover:block"
                         title="Add appointment"
                       >
                         <Plus size={14} />
                       </button>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {dayAppointments.slice(0, 3).map((appointment) => {
                         const lead = leadMap.get(
                           appointment.lead_id ?? ""
@@ -601,14 +773,16 @@ export default function CalendarClient({
                           <button
                             key={appointment.id}
                             onClick={() => openEdit(appointment)}
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-left transition hover:border-slate-300 hover:bg-slate-100"
+                            className={`w-full rounded-lg border px-2 py-1.5 text-left shadow-sm transition hover:-translate-y-px hover:shadow ${getCalendarAppointmentClasses(
+                              appointment.status
+                            )}`}
                           >
-                            <div className="truncate text-[11px] font-semibold text-slate-800">
+                            <div className="truncate text-[10px] font-bold">
                               {formatTime(appointment.start_at)} ·{" "}
                               {appointment.title}
                             </div>
 
-                            <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                            <div className="mt-0.5 truncate text-[9px] opacity-70">
                               {getLeadName(lead)}
                             </div>
                           </button>
@@ -616,7 +790,7 @@ export default function CalendarClient({
                       })}
 
                       {dayAppointments.length > 3 && (
-                        <div className="px-1 text-[10px] font-medium text-slate-400">
+                        <div className="px-1 text-[10px] font-semibold text-slate-400">
                           +{dayAppointments.length - 3} more
                         </div>
                       )}
@@ -628,40 +802,53 @@ export default function CalendarClient({
           </div>
 
           {/* Upcoming */}
-          <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-5">
+          <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50/60 p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-slate-900">
-                    Upcoming
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-900">
+                      Upcoming
+                    </h3>
+
+                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {upcomingAppointments.length}
+                    </span>
+                  </div>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    Your next appointments
+                    Your next scheduled appointments
                   </p>
                 </div>
 
-                <div className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                  {upcomingAppointments.length}
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200">
+                  <Clock3 size={16} />
                 </div>
               </div>
             </div>
 
             <div className="divide-y divide-slate-100">
               {upcomingAppointments.length === 0 ? (
-                <div className="p-6 text-center">
-                  <CalendarDays
-                    size={24}
-                    className="mx-auto text-slate-300"
-                  />
+                <div className="p-8 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+                    <CalendarDays size={23} />
+                  </div>
 
-                  <p className="mt-3 text-sm font-medium text-slate-600">
+                  <p className="mt-4 text-sm font-semibold text-slate-600">
                     No upcoming appointments
                   </p>
 
-                  <p className="mt-1 text-xs text-slate-400">
-                    Create one to get started.
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Create an appointment to start building your schedule.
                   </p>
+
+                  <button
+                    onClick={() => openCreate()}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    <Plus size={14} />
+                    Create Appointment
+                  </button>
                 </div>
               ) : (
                 upcomingAppointments.map((appointment) => {
@@ -676,20 +863,32 @@ export default function CalendarClient({
                       className="w-full p-4 text-left transition hover:bg-slate-50"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
                           <Clock3 size={16} />
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {appointment.title}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-slate-900">
+                                {appointment.title}
+                              </div>
+
+                              <div className="mt-1 text-xs text-slate-500">
+                                {formatDate(appointment.start_at)}
+                              </div>
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-wide ${getStatusClasses(
+                                appointment.status
+                              )}`}
+                            >
+                              {formatStatus(appointment.status)}
+                            </span>
                           </div>
 
-                          <div className="mt-1 text-xs text-slate-500">
-                            {formatDate(appointment.start_at)}
-                          </div>
-
-                          <div className="mt-1 text-xs font-medium text-slate-700">
+                          <div className="mt-2 text-xs font-bold text-slate-700">
                             {formatTime(appointment.start_at)} –{" "}
                             {formatTime(appointment.end_at)}
                           </div>
@@ -713,26 +912,46 @@ export default function CalendarClient({
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {isCreating
-                    ? "New Appointment"
-                    : "Appointment Details"}
-                </h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModal();
+            }
+          }}
+        >
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            {/* Modal header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                  {isCreating ? (
+                    <Plus size={18} />
+                  ) : (
+                    <CalendarDays size={18} />
+                  )}
+                </div>
 
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {isCreating
-                    ? "Create a new appointment."
-                    : "Update appointment information."}
-                </p>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {isCreating
+                      ? "New Appointment"
+                      : "Appointment Details"}
+                  </h2>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {isCreating
+                      ? "Add an appointment to your schedule."
+                      : "Update appointment information and status."}
+                  </p>
+                </div>
               </div>
 
               <button
                 onClick={closeModal}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                disabled={saving || deleting}
+                className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                aria-label="Close"
               >
                 <X size={19} />
               </button>
@@ -740,8 +959,9 @@ export default function CalendarClient({
 
             <form onSubmit={handleSubmit} className="p-5">
               {error && (
-                <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -761,11 +981,11 @@ export default function CalendarClient({
                       }))
                     }
                     placeholder="Estimate visit, service call, consultation..."
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                   />
                 </div>
 
-                {/* Lead + Status */}
+                {/* Customer + Status */}
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -780,7 +1000,7 @@ export default function CalendarClient({
                           lead_id: event.target.value,
                         }))
                       }
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                     >
                       <option value="">No customer selected</option>
 
@@ -806,15 +1026,11 @@ export default function CalendarClient({
                           status: event.target.value,
                         }))
                       }
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                     >
                       {STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>
-                          {status
-                            .replace("_", " ")
-                            .replace(/\b\w/g, (letter) =>
-                              letter.toUpperCase()
-                            )}
+                          {formatStatus(status)}
                         </option>
                       ))}
                     </select>
@@ -822,41 +1038,51 @@ export default function CalendarClient({
                 </div>
 
                 {/* Date/time */}
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Start
-                    </label>
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <Clock3 size={14} className="text-slate-400" />
 
-                    <input
-                      type="datetime-local"
-                      value={form.start_at}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          start_at: event.target.value,
-                        }))
-                      }
-                      className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                    />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Schedule
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      End
-                    </label>
+                  <div className="grid gap-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                        Start
+                      </label>
 
-                    <input
-                      type="datetime-local"
-                      value={form.end_at}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          end_at: event.target.value,
-                        }))
-                      }
-                      className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                    />
+                      <input
+                        type="datetime-local"
+                        value={form.start_at}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            start_at: event.target.value,
+                          }))
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                        End
+                      </label>
+
+                      <input
+                        type="datetime-local"
+                        value={form.end_at}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            end_at: event.target.value,
+                          }))
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -876,11 +1102,11 @@ export default function CalendarClient({
                     }
                     rows={4}
                     placeholder="Appointment notes, location, customer requests..."
-                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                   />
                 </div>
 
-                {/* Customer info */}
+                {/* Customer information */}
                 {form.lead_id && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     {(() => {
@@ -890,32 +1116,49 @@ export default function CalendarClient({
 
                       return (
                         <>
-                          <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                            Customer Information
+                          <div className="mb-4 flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm ring-1 ring-slate-200">
+                              <User size={15} />
+                            </div>
+
+                            <div>
+                              <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                Customer Information
+                              </div>
+
+                              <div className="mt-0.5 text-sm font-semibold text-slate-800">
+                                {getLeadName(lead)}
+                              </div>
+                            </div>
                           </div>
 
                           <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                              <User size={15} />
-                              {getLeadName(lead)}
-                            </div>
-
                             {lead.phone && (
-                              <div className="flex items-center gap-2 text-sm text-slate-600">
-                                <Phone size={15} />
-                                {lead.phone}
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                                <Phone
+                                  size={14}
+                                  className="shrink-0 text-slate-400"
+                                />
+                                <span className="truncate">
+                                  {lead.phone}
+                                </span>
                               </div>
                             )}
 
                             {lead.email && (
-                              <div className="flex items-center gap-2 text-sm text-slate-600">
-                                <Mail size={15} />
-                                {lead.email}
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                                <Mail
+                                  size={14}
+                                  className="shrink-0 text-slate-400"
+                                />
+                                <span className="truncate">
+                                  {lead.email}
+                                </span>
                               </div>
                             )}
 
-                            <div className="flex items-center gap-2 text-sm text-slate-400">
-                              <MapPin size={15} />
+                            <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-xs text-slate-400 ring-1 ring-slate-200">
+                              <MapPin size={14} />
                               Customer linked to lead
                             </div>
                           </div>
@@ -947,7 +1190,7 @@ export default function CalendarClient({
                     type="button"
                     onClick={closeModal}
                     disabled={saving || deleting}
-                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>

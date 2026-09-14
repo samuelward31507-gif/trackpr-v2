@@ -66,12 +66,6 @@ type StepType =
   | "webhook"
   | "notify";
 
-type StepDraft = {
-  step_type: StepType;
-  name: string;
-  configuration: Record<string, unknown>;
-};
-
 const TRIGGERS = [
   {
     value: "lead_created",
@@ -182,17 +176,24 @@ const STEP_TYPES: {
 ];
 
 function triggerLabel(value: string) {
+  return TRIGGERS.find((trigger) => trigger.value === value)?.label ?? value;
+}
+
+function triggerDescription(value: string) {
   return (
-    TRIGGERS.find((trigger) => trigger.value === value)?.label ??
-    value
+    TRIGGERS.find((trigger) => trigger.value === value)?.description ??
+    "Starts this workflow automatically."
+  );
+}
+
+function triggerIcon(value: string) {
+  return (
+    TRIGGERS.find((trigger) => trigger.value === value)?.icon ?? Zap
   );
 }
 
 function stepTypeLabel(value: string) {
-  return (
-    STEP_TYPES.find((step) => step.value === value)?.label ??
-    value
-  );
+  return STEP_TYPES.find((step) => step.value === value)?.label ?? value;
 }
 
 function statusLabel(value: string) {
@@ -226,9 +227,7 @@ function iconForStep(type: string) {
   }
 }
 
-function stepConfiguration(
-  stepType: StepType
-): Record<string, unknown> {
+function stepConfiguration(stepType: StepType): Record<string, unknown> {
   switch (stepType) {
     case "send_sms":
       return {
@@ -302,6 +301,98 @@ function statusClasses(status: string) {
   }
 }
 
+function stepAccentClasses(type: string) {
+  switch (type) {
+    case "send_sms":
+      return "bg-blue-50 text-blue-600 ring-blue-100";
+
+    case "send_email":
+      return "bg-violet-50 text-violet-600 ring-violet-100";
+
+    case "wait":
+      return "bg-amber-50 text-amber-600 ring-amber-100";
+
+    case "condition":
+      return "bg-purple-50 text-purple-600 ring-purple-100";
+
+    case "ai_agent":
+      return "bg-indigo-50 text-indigo-600 ring-indigo-100";
+
+    case "webhook":
+      return "bg-cyan-50 text-cyan-600 ring-cyan-100";
+
+    case "create_task":
+      return "bg-emerald-50 text-emerald-600 ring-emerald-100";
+
+    case "assign":
+      return "bg-orange-50 text-orange-600 ring-orange-100";
+
+    case "notify":
+      return "bg-slate-100 text-slate-600 ring-slate-200";
+
+    default:
+      return "bg-slate-100 text-slate-600 ring-slate-200";
+  }
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+        {label}
+      </label>
+
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+      />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+        {label}
+      </label>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
 export default function WorkflowClient({
   organizationId,
   initialWorkflows,
@@ -309,44 +400,33 @@ export default function WorkflowClient({
 }: Props) {
   const supabase = createClient();
 
-  const [workflows, setWorkflows] =
-    useState<Workflow[]>(initialWorkflows);
+  const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
+  const [steps, setSteps] = useState<WorkflowStep[]>(initialSteps);
 
-  const [steps, setSteps] =
-    useState<WorkflowStep[]>(initialSteps);
-
-  const [selectedWorkflowId, setSelectedWorkflowId] =
-    useState<string | null>(initialWorkflows[0]?.id ?? null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
+    initialWorkflows[0]?.id ?? null
+  );
 
   const [search, setSearch] = useState("");
 
-  const [isWorkflowModalOpen, setIsWorkflowModalOpen] =
-    useState(false);
-
-  const [isStepModalOpen, setIsStepModalOpen] =
-    useState(false);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+  const [isStepModalOpen, setIsStepModalOpen] = useState(false);
 
   const [editingWorkflow, setEditingWorkflow] =
     useState<Workflow | null>(null);
 
-  const [editingStep, setEditingStep] =
-    useState<WorkflowStep | null>(null);
+  const [editingStep, setEditingStep] = useState<WorkflowStep | null>(null);
 
   const [workflowName, setWorkflowName] = useState("");
-  const [workflowDescription, setWorkflowDescription] =
-    useState("");
-  const [workflowTrigger, setWorkflowTrigger] =
-    useState("lead_created");
+  const [workflowDescription, setWorkflowDescription] = useState("");
+  const [workflowTrigger, setWorkflowTrigger] = useState("lead_created");
 
-  const [stepType, setStepType] =
-    useState<StepType>("send_sms");
-
+  const [stepType, setStepType] = useState<StepType>("send_sms");
   const [stepName, setStepName] = useState("");
 
-  const [stepConfig, setStepConfig] =
-    useState<Record<string, unknown>>(
-      stepConfiguration("send_sms")
-    );
+  const [stepConfig, setStepConfig] = useState<Record<string, unknown>>(
+    stepConfiguration("send_sms")
+  );
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -360,20 +440,14 @@ export default function WorkflowClient({
     return workflows.filter(
       (workflow) =>
         workflow.name.toLowerCase().includes(query) ||
-        (workflow.description ?? "")
-          .toLowerCase()
-          .includes(query) ||
-        triggerLabel(workflow.trigger_type)
-          .toLowerCase()
-          .includes(query)
+        (workflow.description ?? "").toLowerCase().includes(query) ||
+        triggerLabel(workflow.trigger_type).toLowerCase().includes(query)
     );
   }, [workflows, search]);
 
   const selectedWorkflow = useMemo(
     () =>
-      workflows.find(
-        (workflow) => workflow.id === selectedWorkflowId
-      ) ?? null,
+      workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
     [workflows, selectedWorkflowId]
   );
 
@@ -391,6 +465,10 @@ export default function WorkflowClient({
 
   const draftCount = workflows.filter(
     (workflow) => workflow.status === "draft"
+  ).length;
+
+  const pausedCount = workflows.filter(
+    (workflow) => workflow.status === "paused"
   ).length;
 
   function openCreateWorkflow() {
@@ -506,9 +584,7 @@ export default function WorkflowClient({
     }
 
     setWorkflows((current) =>
-      current.map((item) =>
-        item.id === workflow.id ? data : item
-      )
+      current.map((item) => (item.id === workflow.id ? data : item))
     );
   }
 
@@ -516,20 +592,19 @@ export default function WorkflowClient({
     setSaving(true);
     setError("");
 
-    const { data: newWorkflow, error: workflowError } =
-      await supabase
-        .from("workflows")
-        .insert({
-          organization_id: organizationId,
-          name: `${workflow.name} Copy`,
-          description: workflow.description,
-          trigger_type: workflow.trigger_type,
-          status: "draft",
-        })
-        .select(
-          "id, organization_id, name, description, trigger_type, status, created_at, updated_at"
-        )
-        .single();
+    const { data: newWorkflow, error: workflowError } = await supabase
+      .from("workflows")
+      .insert({
+        organization_id: organizationId,
+        name: `${workflow.name} Copy`,
+        description: workflow.description,
+        trigger_type: workflow.trigger_type,
+        status: "draft",
+      })
+      .select(
+        "id, organization_id, name, description, trigger_type, status, created_at, updated_at"
+      )
+      .single();
 
     if (workflowError) {
       setError(workflowError.message);
@@ -542,22 +617,21 @@ export default function WorkflowClient({
       .sort((a, b) => a.step_order - b.step_order);
 
     if (originalSteps.length > 0) {
-      const { data: copiedSteps, error: stepsError } =
-        await supabase
-          .from("workflow_steps")
-          .insert(
-            originalSteps.map((step, index) => ({
-              workflow_id: newWorkflow.id,
-              organization_id: organizationId,
-              step_order: index,
-              step_type: step.step_type,
-              name: step.name,
-              configuration: step.configuration,
-            }))
-          )
-          .select(
-            "id, workflow_id, organization_id, step_order, step_type, name, configuration, created_at, updated_at"
-          );
+      const { data: copiedSteps, error: stepsError } = await supabase
+        .from("workflow_steps")
+        .insert(
+          originalSteps.map((step, index) => ({
+            workflow_id: newWorkflow.id,
+            organization_id: organizationId,
+            step_order: index,
+            step_type: step.step_type,
+            name: step.name,
+            configuration: step.configuration,
+          }))
+        )
+        .select(
+          "id, workflow_id, organization_id, step_order, step_type, name, configuration, created_at, updated_at"
+        );
 
       if (stepsError) {
         setError(stepsError.message);
@@ -565,10 +639,7 @@ export default function WorkflowClient({
         return;
       }
 
-      setSteps((current) => [
-        ...current,
-        ...(copiedSteps ?? []),
-      ]);
+      setSteps((current) => [...current, ...(copiedSteps ?? [])]);
     }
 
     setWorkflows((current) => [newWorkflow, ...current]);
@@ -729,6 +800,8 @@ export default function WorkflowClient({
 
     if (!confirmed) return;
 
+    setError("");
+
     const { error: deleteError } = await supabase
       .from("workflow_steps")
       .delete()
@@ -748,8 +821,7 @@ export default function WorkflowClient({
 
     setSteps((current) => [
       ...current.filter(
-        (item) =>
-          item.workflow_id !== selectedWorkflow?.id
+        (item) => item.workflow_id !== selectedWorkflow?.id
       ),
       ...remaining,
     ]);
@@ -800,13 +872,12 @@ export default function WorkflowClient({
 
     setSteps((current) => [
       ...current.filter(
-        (item) =>
-          item.workflow_id !== selectedWorkflow?.id
+        (item) => item.workflow_id !== selectedWorkflow?.id
       ),
       ...updatedSteps,
     ]);
 
-    await Promise.all(
+    const results = await Promise.all(
       updatedSteps.map((item) =>
         supabase
           .from("workflow_steps")
@@ -816,12 +887,15 @@ export default function WorkflowClient({
           .eq("id", item.id)
       )
     );
+
+    const failed = results.find((result) => result.error);
+
+    if (failed?.error) {
+      setError(failed.error.message);
+    }
   }
 
-  function updateStepConfig(
-    key: string,
-    value: unknown
-  ) {
+  function updateStepConfig(key: string, value: unknown) {
     setStepConfig((current) => ({
       ...current,
       [key]: value,
@@ -841,23 +915,16 @@ export default function WorkflowClient({
               rows={5}
               value={String(stepConfig.message ?? "")}
               onChange={(event) =>
-                updateStepConfig(
-                  "message",
-                  event.target.value
-                )
+                updateStepConfig("message", event.target.value)
               }
               placeholder="Hi {{first_name}}, just checking in about your estimate..."
-              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
             />
 
             <p className="mt-2 text-xs leading-5 text-slate-400">
-              Variables like{" "}
+              Variables such as{" "}
               <span className="font-mono text-slate-500">
                 {"{{first_name}}"}
-              </span>{" "}
-              and{" "}
-              <span className="font-mono text-slate-500">
-                {"{{business_name}}"}
               </span>{" "}
               can be used when supported by the automation engine.
             </p>
@@ -867,23 +934,12 @@ export default function WorkflowClient({
       case "send_email":
         return (
           <div className="grid gap-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Subject
-              </label>
-
-              <input
-                value={String(stepConfig.subject ?? "")}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "subject",
-                    event.target.value
-                  )
-                }
-                placeholder="Following up on your estimate"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
-            </div>
+            <InputField
+              label="Subject"
+              value={String(stepConfig.subject ?? "")}
+              onChange={(value) => updateStepConfig("subject", value)}
+              placeholder="Following up on your estimate"
+            />
 
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -894,13 +950,10 @@ export default function WorkflowClient({
                 rows={6}
                 value={String(stepConfig.message ?? "")}
                 onChange={(event) =>
-                  updateStepConfig(
-                    "message",
-                    event.target.value
-                  )
+                  updateStepConfig("message", event.target.value)
                 }
                 placeholder="Write your email..."
-                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
               />
             </div>
           </div>
@@ -909,225 +962,130 @@ export default function WorkflowClient({
       case "wait":
         return (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Amount
-              </label>
+            <InputField
+              label="Amount"
+              type="number"
+              value={String(stepConfig.amount ?? 1)}
+              onChange={(value) =>
+                updateStepConfig(
+                  "amount",
+                  Number(value)
+                )
+              }
+            />
 
-              <input
-                type="number"
-                min="1"
-                value={String(stepConfig.amount ?? 1)}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "amount",
-                    Number(event.target.value)
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Unit
-              </label>
-
-              <select
-                value={String(stepConfig.unit ?? "hours")}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "unit",
-                    event.target.value
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400"
-              >
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-              </select>
-            </div>
+            <SelectField
+              label="Unit"
+              value={String(stepConfig.unit ?? "hours")}
+              onChange={(value) =>
+                updateStepConfig("unit", value)
+              }
+            >
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
+              <option value="weeks">Weeks</option>
+            </SelectField>
           </div>
         );
 
       case "condition":
         return (
           <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Field
-              </label>
+            <SelectField
+              label="Field"
+              value={String(stepConfig.field ?? "lead.status")}
+              onChange={(value) =>
+                updateStepConfig("field", value)
+              }
+            >
+              <option value="lead.status">Lead Status</option>
+              <option value="lead.source">Lead Source</option>
+              <option value="lead.email">Lead Email</option>
+              <option value="lead.phone">Lead Phone</option>
+              <option value="appointment.status">
+                Appointment Status
+              </option>
+            </SelectField>
 
-              <select
-                value={String(
-                  stepConfig.field ?? "lead.status"
-                )}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "field",
-                    event.target.value
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400"
-              >
-                <option value="lead.status">
-                  Lead Status
-                </option>
-                <option value="lead.source">
-                  Lead Source
-                </option>
-                <option value="lead.email">
-                  Lead Email
-                </option>
-                <option value="lead.phone">
-                  Lead Phone
-                </option>
-                <option value="appointment.status">
-                  Appointment Status
-                </option>
-              </select>
-            </div>
+            <SelectField
+              label="Operator"
+              value={String(stepConfig.operator ?? "equals")}
+              onChange={(value) =>
+                updateStepConfig("operator", value)
+              }
+            >
+              <option value="equals">Equals</option>
+              <option value="not_equals">
+                Does not equal
+              </option>
+              <option value="contains">Contains</option>
+              <option value="exists">Exists</option>
+              <option value="not_exists">
+                Does not exist
+              </option>
+            </SelectField>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Operator
-              </label>
-
-              <select
-                value={String(
-                  stepConfig.operator ?? "equals"
-                )}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "operator",
-                    event.target.value
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400"
-              >
-                <option value="equals">Equals</option>
-                <option value="not_equals">
-                  Does not equal
-                </option>
-                <option value="contains">Contains</option>
-                <option value="exists">Exists</option>
-                <option value="not_exists">
-                  Does not exist
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Value
-              </label>
-
-              <input
-                value={String(stepConfig.value ?? "")}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "value",
-                    event.target.value
-                  )
-                }
-                placeholder="new"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
-            </div>
+            <InputField
+              label="Value"
+              value={String(stepConfig.value ?? "")}
+              onChange={(value) =>
+                updateStepConfig("value", value)
+              }
+              placeholder="new"
+            />
           </div>
         );
 
       case "create_task":
         return (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Task Title
-              </label>
+            <InputField
+              label="Task Title"
+              value={String(stepConfig.title ?? "")}
+              onChange={(value) =>
+                updateStepConfig("title", value)
+              }
+              placeholder="Follow up with lead"
+            />
 
-              <input
-                value={String(stepConfig.title ?? "")}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "title",
-                    event.target.value
-                  )
-                }
-                placeholder="Follow up with lead"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Priority
-              </label>
-
-              <select
-                value={String(
-                  stepConfig.priority ?? "medium"
-                )}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "priority",
-                    event.target.value
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
+            <SelectField
+              label="Priority"
+              value={String(stepConfig.priority ?? "medium")}
+              onChange={(value) =>
+                updateStepConfig("priority", value)
+              }
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </SelectField>
           </div>
         );
 
       case "webhook":
         return (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Webhook URL
-              </label>
+            <InputField
+              label="Webhook URL"
+              type="url"
+              value={String(stepConfig.url ?? "")}
+              onChange={(value) =>
+                updateStepConfig("url", value)
+              }
+              placeholder="https://..."
+            />
 
-              <input
-                type="url"
-                value={String(stepConfig.url ?? "")}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "url",
-                    event.target.value
-                  )
-                }
-                placeholder="https://..."
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Method
-              </label>
-
-              <select
-                value={String(
-                  stepConfig.method ?? "POST"
-                )}
-                onChange={(event) =>
-                  updateStepConfig(
-                    "method",
-                    event.target.value
-                  )
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400"
-              >
-                <option value="POST">POST</option>
-                <option value="GET">GET</option>
-              </select>
-            </div>
+            <SelectField
+              label="Method"
+              value={String(stepConfig.method ?? "POST")}
+              onChange={(value) =>
+                updateStepConfig("method", value)
+              }
+            >
+              <option value="POST">POST</option>
+              <option value="GET">GET</option>
+            </SelectField>
           </div>
         );
 
@@ -1142,13 +1100,10 @@ export default function WorkflowClient({
               rows={4}
               value={String(stepConfig.message ?? "")}
               onChange={(event) =>
-                updateStepConfig(
-                  "message",
-                  event.target.value
-                )
+                updateStepConfig("message", event.target.value)
               }
               placeholder="A high-value lead needs attention."
-              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
             />
           </div>
         );
@@ -1205,11 +1160,11 @@ export default function WorkflowClient({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
-      <div className="mx-auto max-w-[1600px]">
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
 
         {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
@@ -1217,13 +1172,19 @@ export default function WorkflowClient({
               </div>
 
               <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Automation
+                  </span>
+                </div>
+
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                   Workflows
                 </h1>
 
-                <p className="mt-0.5 text-sm text-slate-500">
-                  Automate the repetitive work behind your
-                  leads, customers, and team.
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+                  Build automated processes that keep leads,
+                  customers, and your team moving.
                 </p>
               </div>
             </div>
@@ -1239,17 +1200,19 @@ export default function WorkflowClient({
         </div>
 
         {/* Metrics */}
-        <div className="mb-5 grid gap-4 sm:grid-cols-3">
+        <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Total Workflows
               </span>
 
-              <Zap size={16} className="text-slate-300" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                <Zap size={16} />
+              </div>
             </div>
 
-            <div className="mt-2 text-2xl font-bold text-slate-900">
+            <div className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
               {workflows.length}
             </div>
 
@@ -1260,51 +1223,95 @@ export default function WorkflowClient({
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Active
               </span>
 
-              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <Play size={15} />
+              </div>
             </div>
 
-            <div className="mt-2 text-2xl font-bold text-slate-900">
+            <div className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
               {activeCount}
             </div>
 
             <p className="mt-1 text-xs text-slate-400">
-              Currently enabled workflows
+              Currently enabled
             </p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Workflow Steps
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Drafts
               </span>
 
-              <Activity size={16} className="text-slate-300" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                <Pencil size={15} />
+              </div>
             </div>
 
-            <div className="mt-2 text-2xl font-bold text-slate-900">
+            <div className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
+              {draftCount}
+            </div>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Workflows being configured
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Total Steps
+              </span>
+
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <Activity size={15} />
+              </div>
+            </div>
+
+            <div className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
               {steps.length}
             </div>
 
             <p className="mt-1 text-xs text-slate-400">
-              Actions across all workflows
+              Actions across workflows
             </p>
           </div>
         </div>
 
-        {/* Main */}
-        <div className="grid min-h-[680px] gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+        {/* Small status summary */}
+        {pausedCount > 0 && (
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm">
+              <Clock3 size={15} />
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-amber-900">
+                {pausedCount} workflow
+                {pausedCount === 1 ? "" : "s"} paused
+              </p>
+
+              <p className="mt-0.5 text-xs text-amber-700">
+                Paused workflows will not process new automation events.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Main workspace */}
+        <div className="grid min-h-[700px] gap-5 xl:grid-cols-[350px_minmax(0,1fr)]">
 
           {/* Workflow list */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-4">
+            <div className="border-b border-slate-200 bg-white p-4">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">
-                    Your workflows
+                    Workflow Library
                   </h2>
 
                   <p className="mt-0.5 text-xs text-slate-400">
@@ -1316,6 +1323,10 @@ export default function WorkflowClient({
                       : ""}
                   </p>
                 </div>
+
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                  <GitBranch size={15} />
+                </div>
               </div>
 
               <div className="relative">
@@ -1326,122 +1337,147 @@ export default function WorkflowClient({
 
                 <input
                   value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search workflows..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
                 />
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="max-h-[700px] overflow-y-auto">
               {filteredWorkflows.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                    <Zap size={22} />
+                <div className="flex min-h-[420px] items-center justify-center p-8 text-center">
+                  <div>
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                      <Zap size={23} />
+                    </div>
+
+                    <p className="mt-4 text-sm font-bold text-slate-800">
+                      {search
+                        ? "No matching workflows"
+                        : "No workflows yet"}
+                    </p>
+
+                    <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-400">
+                      {search
+                        ? "Try a different search term."
+                        : "Create your first workflow to automate a repetitive process."}
+                    </p>
+
+                    {!search && (
+                      <button
+                        onClick={openCreateWorkflow}
+                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                      >
+                        <Plus size={15} />
+                        Create Workflow
+                      </button>
+                    )}
                   </div>
-
-                  <p className="mt-4 text-sm font-semibold text-slate-700">
-                    {search
-                      ? "No matching workflows"
-                      : "No workflows yet"}
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-400">
-                    {search
-                      ? "Try a different search."
-                      : "Create your first workflow to automate a repetitive process."}
-                  </p>
-
-                  {!search && (
-                    <button
-                      onClick={openCreateWorkflow}
-                      className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-                    >
-                      <Plus size={15} />
-                      Create Workflow
-                    </button>
-                  )}
                 </div>
               ) : (
-                filteredWorkflows.map((workflow) => {
-                  const workflowStepCount = steps.filter(
-                    (step) =>
-                      step.workflow_id === workflow.id
-                  ).length;
+                <div className="p-2">
+                  {filteredWorkflows.map((workflow) => {
+                    const workflowStepCount = steps.filter(
+                      (step) => step.workflow_id === workflow.id
+                    ).length;
 
-                  const selected =
-                    workflow.id === selectedWorkflowId;
+                    const selected =
+                      workflow.id === selectedWorkflowId;
 
-                  return (
-                    <button
-                      key={workflow.id}
-                      onClick={() =>
-                        setSelectedWorkflowId(workflow.id)
-                      }
-                      className={`group w-full p-4 text-left transition ${
-                        selected
-                          ? "bg-slate-50"
-                          : "hover:bg-slate-50/70"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition ${
-                            selected
-                              ? "bg-slate-900 text-white"
-                              : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
-                          }`}
-                        >
-                          <Zap size={16} />
-                        </div>
+                    const TriggerIcon = triggerIcon(
+                      workflow.trigger_type
+                    );
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
-                              {workflow.name}
-                            </span>
+                    return (
+                      <button
+                        key={workflow.id}
+                        onClick={() =>
+                          setSelectedWorkflowId(workflow.id)
+                        }
+                        className={`group mb-1 w-full rounded-xl p-3.5 text-left transition ${
+                          selected
+                            ? "bg-slate-900 shadow-sm"
+                            : "hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
+                              selected
+                                ? "bg-white/10 text-white"
+                                : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+                            }`}
+                          >
+                            <TriggerIcon size={17} />
+                          </div>
 
-                            <ChevronRight
-                              size={15}
-                              className={`shrink-0 transition ${
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`min-w-0 flex-1 truncate text-sm font-semibold ${
+                                  selected
+                                    ? "text-white"
+                                    : "text-slate-900"
+                                }`}
+                              >
+                                {workflow.name}
+                              </span>
+
+                              <ChevronRight
+                                size={15}
+                                className={`shrink-0 ${
+                                  selected
+                                    ? "text-slate-400"
+                                    : "text-slate-300 group-hover:text-slate-500"
+                                }`}
+                              />
+                            </div>
+
+                            <div
+                              className={`mt-1 truncate text-xs ${
                                 selected
-                                  ? "text-slate-500"
-                                  : "text-slate-300 group-hover:text-slate-500"
+                                  ? "text-slate-300"
+                                  : "text-slate-500"
                               }`}
-                            />
-                          </div>
-
-                          <div className="mt-1 truncate text-xs text-slate-500">
-                            {triggerLabel(
-                              workflow.trigger_type
-                            )}
-                          </div>
-
-                          <div className="mt-2 flex items-center gap-2">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusClasses(
-                                workflow.status
-                              )}`}
                             >
-                              {statusLabel(
-                                workflow.status
-                              )}
-                            </span>
+                              {triggerLabel(workflow.trigger_type)}
+                            </div>
 
-                            <span className="text-[11px] text-slate-400">
-                              {workflowStepCount}{" "}
-                              {workflowStepCount === 1
-                                ? "step"
-                                : "steps"}
-                            </span>
+                            <div className="mt-2.5 flex items-center gap-2">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                  selected
+                                    ? workflow.status === "active"
+                                      ? "bg-emerald-400/15 text-emerald-300"
+                                      : workflow.status === "paused"
+                                      ? "bg-amber-400/15 text-amber-300"
+                                      : "bg-white/10 text-slate-300"
+                                    : statusClasses(workflow.status)
+                                }`}
+                              >
+                                {statusLabel(workflow.status)}
+                              </span>
+
+                              <span
+                                className={`text-[11px] ${
+                                  selected
+                                    ? "text-slate-400"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                {workflowStepCount}{" "}
+                                {workflowStepCount === 1
+                                  ? "step"
+                                  : "steps"}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
-                  );
-                })
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </section>
@@ -1449,24 +1485,24 @@ export default function WorkflowClient({
           {/* Builder */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {!selectedWorkflow ? (
-              <div className="flex min-h-[680px] items-center justify-center p-8 text-center">
+              <div className="flex min-h-[700px] items-center justify-center p-8 text-center">
                 <div>
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                    <Zap size={25} />
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <GitBranch size={27} />
                   </div>
 
-                  <h2 className="mt-4 text-lg font-bold text-slate-900">
+                  <h2 className="mt-5 text-lg font-bold text-slate-900">
                     Select a workflow
                   </h2>
 
-                  <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
-                    Choose a workflow from the left or create
-                    a new one to start building your automation.
+                  <p className="mx-auto mt-1.5 max-w-sm text-sm leading-6 text-slate-500">
+                    Choose a workflow from the library or create a
+                    new one to start building your automation.
                   </p>
 
                   <button
                     onClick={openCreateWorkflow}
-                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                    className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                   >
                     <Plus size={17} />
                     New Workflow
@@ -1476,10 +1512,10 @@ export default function WorkflowClient({
             ) : (
               <>
                 {/* Builder header */}
-                <div className="border-b border-slate-200 bg-white p-5 md:p-6">
+                <div className="border-b border-slate-200 bg-white px-5 py-5 md:px-6">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <h2 className="text-xl font-bold tracking-tight text-slate-900">
                           {selectedWorkflow.name}
                         </h2>
@@ -1489,18 +1525,36 @@ export default function WorkflowClient({
                             selectedWorkflow.status
                           )}`}
                         >
-                          {statusLabel(
-                            selectedWorkflow.status
-                          )}
+                          {statusLabel(selectedWorkflow.status)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                        <span>
+                          Trigger:{" "}
+                          <span className="font-semibold text-slate-600">
+                            {triggerLabel(
+                              selectedWorkflow.trigger_type
+                            )}
+                          </span>
+                        </span>
+
+                        <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
+
+                        <span>
+                          {selectedSteps.length}{" "}
+                          {selectedSteps.length === 1
+                            ? "action"
+                            : "actions"}
                         </span>
                       </div>
 
                       {selectedWorkflow.description ? (
-                        <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
                           {selectedWorkflow.description}
                         </p>
                       ) : (
-                        <p className="mt-1.5 text-sm text-slate-400">
+                        <p className="mt-2 text-sm text-slate-400">
                           No workflow description added.
                         </p>
                       )}
@@ -1512,14 +1566,12 @@ export default function WorkflowClient({
                           toggleWorkflow(selectedWorkflow)
                         }
                         className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                          selectedWorkflow.status ===
-                          "active"
+                          selectedWorkflow.status === "active"
                             ? "border-amber-200 bg-white text-amber-700 hover:bg-amber-50"
                             : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
                         }`}
                       >
-                        {selectedWorkflow.status ===
-                        "active" ? (
+                        {selectedWorkflow.status === "active" ? (
                           <>
                             <X size={14} />
                             Pause
@@ -1534,9 +1586,7 @@ export default function WorkflowClient({
 
                       <button
                         onClick={() =>
-                          duplicateWorkflow(
-                            selectedWorkflow
-                          )
+                          duplicateWorkflow(selectedWorkflow)
                         }
                         disabled={saving}
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
@@ -1547,9 +1597,7 @@ export default function WorkflowClient({
 
                       <button
                         onClick={() =>
-                          openEditWorkflow(
-                            selectedWorkflow
-                          )
+                          openEditWorkflow(selectedWorkflow)
                         }
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                       >
@@ -1559,76 +1607,75 @@ export default function WorkflowClient({
 
                       <button
                         onClick={() =>
-                          deleteWorkflow(
-                            selectedWorkflow
-                          )
+                          deleteWorkflow(selectedWorkflow)
                         }
                         disabled={deleting}
                         className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
                       >
                         <Trash2 size={14} />
-                        {deleting
-                          ? "Deleting..."
-                          : "Delete"}
+                        {deleting ? "Deleting..." : "Delete"}
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* Builder body */}
-                <div className="min-h-[600px] bg-slate-50/70 p-5 md:p-8">
+                {/* Builder */}
+                <div className="min-h-[625px] bg-slate-50/80 px-4 py-6 md:px-8 md:py-9">
                   <div className="mx-auto max-w-2xl">
 
                     {/* Trigger */}
-                    <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <div className="absolute left-0 top-0 h-full w-1 rounded-l-2xl bg-slate-900" />
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <div className="absolute inset-y-0 left-0 w-1 bg-slate-900" />
 
-                      <div className="flex items-start gap-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-                          <Zap size={20} />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Workflow Trigger
+                      <div className="p-5 md:p-6">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                            <Zap size={21} />
                           </div>
 
-                          <div className="mt-1 text-base font-bold text-slate-900">
-                            {triggerLabel(
-                              selectedWorkflow.trigger_type
-                            )}
-                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                Trigger
+                              </span>
 
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            {TRIGGERS.find(
-                              (trigger) =>
-                                trigger.value ===
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                Step 0
+                              </span>
+                            </div>
+
+                            <div className="mt-1 text-base font-bold text-slate-900">
+                              {triggerLabel(
                                 selectedWorkflow.trigger_type
-                            )?.description ??
-                              "Starts this workflow automatically."}
-                          </p>
-                        </div>
+                              )}
+                            </div>
 
-                        <button
-                          onClick={() =>
-                            openEditWorkflow(
-                              selectedWorkflow
-                            )
-                          }
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                          title="Edit trigger"
-                        >
-                          <Settings2 size={16} />
-                        </button>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              {triggerDescription(
+                                selectedWorkflow.trigger_type
+                              )}
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              openEditWorkflow(selectedWorkflow)
+                            }
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                            title="Edit trigger"
+                          >
+                            <Settings2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Trigger connector */}
-                    <div className="flex justify-center py-2">
-                      <div className="relative h-8 w-px bg-slate-200">
+                    {/* Connector */}
+                    <div className="flex justify-center py-1">
+                      <div className="relative h-9 w-px bg-slate-200">
                         <ArrowDown
                           size={14}
-                          className="absolute left-1/2 top-4 -translate-x-1/2 text-slate-300"
+                          className="absolute left-1/2 top-5 -translate-x-1/2 text-slate-300"
                         />
                       </div>
                     </div>
@@ -1636,183 +1683,205 @@ export default function WorkflowClient({
                     {/* Steps */}
                     {selectedSteps.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                          <Plus size={20} />
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                          <Plus size={21} />
                         </div>
 
-                        <h3 className="mt-3 text-sm font-bold text-slate-800">
-                          Your workflow has no actions yet
+                        <h3 className="mt-4 text-sm font-bold text-slate-800">
+                          Your workflow is ready
                         </h3>
 
                         <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-400">
-                          Add an action such as an SMS, email,
-                          wait, task, condition, or AI agent.
+                          Add your first action to tell Trackpr what
+                          should happen after this trigger fires.
                         </p>
+
+                        <button
+                          onClick={openCreateStep}
+                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                        >
+                          <Plus size={15} />
+                          Add First Action
+                        </button>
                       </div>
                     ) : (
                       selectedSteps.map((step, index) => {
-                        const Icon = iconForStep(
-                          step.step_type
-                        );
+                        const Icon = iconForStep(step.step_type);
 
                         return (
                           <div key={step.id}>
-                            <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md">
-                              <div className="flex items-start gap-4">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition group-hover:bg-slate-200">
-                                  <Icon size={19} />
-                                </div>
-
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                      Step {index + 1}
-                                    </span>
-
-                                    <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                      {stepTypeLabel(
-                                        step.step_type
-                                      )}
-                                    </span>
+                            <div className="group relative rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md">
+                              <div className="p-5 md:p-6">
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${stepAccentClasses(
+                                      step.step_type
+                                    )}`}
+                                  >
+                                    <Icon size={19} />
                                   </div>
 
-                                  <div className="mt-1 text-base font-bold text-slate-900">
-                                    {step.name}
-                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                        Step {index + 1}
+                                      </span>
 
-                                  {step.step_type ===
-                                    "wait" && (
-                                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600">
-                                      <Clock3 size={13} />
-                                      Wait{" "}
-                                      {String(
-                                        step.configuration
-                                          ?.amount ?? 1
-                                      )}{" "}
-                                      {String(
-                                        step.configuration
-                                          ?.unit ?? "hours"
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {step.step_type ===
-                                    "condition" && (
-                                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
-                                      <span className="font-semibold text-slate-700">
-                                        {String(
-                                          step.configuration
-                                            ?.field ??
-                                            "lead.status"
+                                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                        {stepTypeLabel(
+                                          step.step_type
                                         )}
-                                      </span>{" "}
-                                      {String(
-                                        step.configuration
-                                          ?.operator ??
-                                          "equals"
-                                      )}{" "}
-                                      <span className="font-semibold text-slate-700">
-                                        {String(
-                                          step.configuration
-                                            ?.value ?? ""
-                                        ) || "—"}
                                       </span>
                                     </div>
-                                  )}
 
-                                  {step.step_type ===
-                                    "send_sms" &&
-                                    String(
-                                      step.configuration
-                                        ?.message ?? ""
-                                    ).trim() && (
-                                      <div className="mt-3 line-clamp-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500">
+                                    <div className="mt-2 text-base font-bold text-slate-900">
+                                      {step.name}
+                                    </div>
+
+                                    {step.step_type === "wait" && (
+                                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
+                                        <Clock3 size={13} />
+                                        Wait{" "}
                                         {String(
-                                          step.configuration
-                                            ?.message
+                                          step.configuration?.amount ?? 1
+                                        )}{" "}
+                                        {String(
+                                          step.configuration?.unit ?? "hours"
                                         )}
                                       </div>
                                     )}
 
-                                  {step.step_type ===
-                                    "send_email" &&
-                                    String(
-                                      step.configuration
-                                        ?.subject ?? ""
-                                    ).trim() && (
-                                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+                                    {step.step_type === "condition" && (
+                                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
                                         <span className="font-semibold text-slate-700">
-                                          Subject:
+                                          {String(
+                                            step.configuration?.field ??
+                                              "lead.status"
+                                          )}
                                         </span>{" "}
                                         {String(
-                                          step.configuration
-                                            ?.subject
-                                        )}
+                                          step.configuration?.operator ??
+                                            "equals"
+                                        )}{" "}
+                                        <span className="font-semibold text-slate-700">
+                                          {String(
+                                            step.configuration?.value ?? ""
+                                          ) || "—"}
+                                        </span>
                                       </div>
                                     )}
-                                </div>
 
-                                <div className="flex shrink-0 items-center gap-1 opacity-70 transition group-hover:opacity-100">
-                                  <button
-                                    onClick={() =>
-                                      moveStep(step, -1)
-                                    }
-                                    disabled={
-                                      index === 0
-                                    }
-                                    className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-20"
-                                    title="Move up"
-                                  >
-                                    ↑
-                                  </button>
+                                    {step.step_type === "send_sms" &&
+                                      String(
+                                        step.configuration?.message ?? ""
+                                      ).trim() && (
+                                        <div className="mt-3 line-clamp-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500">
+                                          {String(
+                                            step.configuration?.message
+                                          )}
+                                        </div>
+                                      )}
 
-                                  <button
-                                    onClick={() =>
-                                      moveStep(step, 1)
-                                    }
-                                    disabled={
-                                      index ===
-                                      selectedSteps.length -
-                                        1
-                                    }
-                                    className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-20"
-                                    title="Move down"
-                                  >
-                                    ↓
-                                  </button>
+                                    {step.step_type === "send_email" &&
+                                      String(
+                                        step.configuration?.subject ?? ""
+                                      ).trim() && (
+                                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+                                          <span className="font-semibold text-slate-700">
+                                            Subject:
+                                          </span>{" "}
+                                          {String(
+                                            step.configuration?.subject
+                                          )}
+                                        </div>
+                                      )}
 
-                                  <button
-                                    onClick={() =>
-                                      openEditStep(step)
-                                    }
-                                    className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                                    title="Edit step"
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
+                                    {step.step_type === "webhook" &&
+                                      String(
+                                        step.configuration?.url ?? ""
+                                      ).trim() && (
+                                        <div className="mt-3 truncate rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-[11px] text-slate-500">
+                                          {String(
+                                            step.configuration?.method ??
+                                              "POST"
+                                          )}{" "}
+                                          ·{" "}
+                                          {String(
+                                            step.configuration?.url
+                                          )}
+                                        </div>
+                                      )}
 
-                                  <button
-                                    onClick={() =>
-                                      deleteStep(step)
-                                    }
-                                    className="rounded-md p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-                                    title="Delete step"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
+                                    {step.step_type === "create_task" &&
+                                      String(
+                                        step.configuration?.title ?? ""
+                                      ).trim() && (
+                                        <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">
+                                          <Check size={13} />
+                                          {String(
+                                            step.configuration?.title
+                                          )}
+                                        </div>
+                                      )}
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+                                    <button
+                                      onClick={() =>
+                                        moveStep(step, -1)
+                                      }
+                                      disabled={index === 0}
+                                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-20"
+                                      title="Move up"
+                                    >
+                                      ↑
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        moveStep(step, 1)
+                                      }
+                                      disabled={
+                                        index ===
+                                        selectedSteps.length - 1
+                                      }
+                                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-20"
+                                      title="Move down"
+                                    >
+                                      ↓
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        openEditStep(step)
+                                      }
+                                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                                      title="Edit step"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        deleteStep(step)
+                                      }
+                                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                                      title="Delete step"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
 
                             {index <
                               selectedSteps.length - 1 && (
-                              <div className="flex justify-center py-2">
-                                <div className="relative h-8 w-px bg-slate-200">
+                              <div className="flex justify-center py-1">
+                                <div className="relative h-9 w-px bg-slate-200">
                                   <ArrowDown
                                     size={14}
-                                    className="absolute left-1/2 top-4 -translate-x-1/2 text-slate-300"
+                                    className="absolute left-1/2 top-5 -translate-x-1/2 text-slate-300"
                                   />
                                 </div>
                               </div>
@@ -1826,7 +1895,7 @@ export default function WorkflowClient({
                     <div className="mt-3">
                       <button
                         onClick={openCreateStep}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-white px-5 py-5 text-sm font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-white px-5 py-4.5 text-sm font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                       >
                         <Plus size={18} />
                         Add Workflow Step
@@ -1848,27 +1917,43 @@ export default function WorkflowClient({
         </div>
 
         {error && (
-          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100">
+              <X size={12} />
+            </div>
+
+            <span>{error}</span>
           </div>
         )}
       </div>
 
       {/* Workflow modal */}
       {isWorkflowModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeWorkflowModal();
+            }
+          }}
+        >
           <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {editingWorkflow
-                    ? "Edit Workflow"
-                    : "Create Workflow"}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white">
+                    <Zap size={15} />
+                  </div>
 
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Define when the automation starts.
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {editingWorkflow
+                      ? "Edit Workflow"
+                      : "Create Workflow"}
+                  </h2>
+                </div>
+
+                <p className="mt-1 pl-10 text-xs text-slate-500">
+                  Define when this automation should start.
                 </p>
               </div>
 
@@ -1880,31 +1965,19 @@ export default function WorkflowClient({
               </button>
             </div>
 
-            <form
-              onSubmit={saveWorkflow}
-              className="space-y-5 p-5"
-            >
+            <form onSubmit={saveWorkflow} className="space-y-6 p-5">
               {error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {error}
                 </div>
               )}
 
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Workflow Name
-                </label>
-
-                <input
-                  value={workflowName}
-                  onChange={(event) =>
-                    setWorkflowName(event.target.value)
-                  }
-                  placeholder="New Lead Follow-Up"
-                  autoFocus
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                />
-              </div>
+              <InputField
+                label="Workflow Name"
+                value={workflowName}
+                onChange={setWorkflowName}
+                placeholder="New Lead Follow-Up"
+              />
 
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -1914,24 +1987,22 @@ export default function WorkflowClient({
                 <textarea
                   value={workflowDescription}
                   onChange={(event) =>
-                    setWorkflowDescription(
-                      event.target.value
-                    )
+                    setWorkflowDescription(event.target.value)
                   }
                   rows={3}
                   placeholder="Automatically follow up with new leads..."
-                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                 />
               </div>
 
               <div>
-                <div className="mb-2">
+                <div className="mb-3">
                   <label className="block text-sm font-semibold text-slate-700">
                     Trigger
                   </label>
 
                   <p className="mt-0.5 text-xs text-slate-400">
-                    This event starts the workflow.
+                    The event that starts this workflow.
                   </p>
                 </div>
 
@@ -1946,9 +2017,7 @@ export default function WorkflowClient({
                         key={trigger.value}
                         type="button"
                         onClick={() =>
-                          setWorkflowTrigger(
-                            trigger.value
-                          )
+                          setWorkflowTrigger(trigger.value)
                         }
                         className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
                           selected
@@ -2016,20 +2085,34 @@ export default function WorkflowClient({
 
       {/* Step modal */}
       {isStepModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeStepModal();
+            }
+          }}
+        >
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {editingStep
-                    ? "Edit Workflow Step"
-                    : "Add Workflow Step"}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white">
+                    {(() => {
+                      const Icon = iconForStep(stepType);
+                      return <Icon size={15} />;
+                    })()}
+                  </div>
 
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Define what happens when the workflow reaches
-                  this step.
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {editingStep
+                      ? "Edit Workflow Step"
+                      : "Add Workflow Step"}
+                  </h2>
+                </div>
+
+                <p className="mt-1 pl-10 text-xs text-slate-500">
+                  Define what happens when the workflow reaches this step.
                 </p>
               </div>
 
@@ -2041,34 +2124,22 @@ export default function WorkflowClient({
               </button>
             </div>
 
-            <form
-              onSubmit={saveStep}
-              className="space-y-5 p-5"
-            >
+            <form onSubmit={saveStep} className="space-y-6 p-5">
               {error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {error}
                 </div>
               )}
 
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Step Name
-                </label>
-
-                <input
-                  value={stepName}
-                  onChange={(event) =>
-                    setStepName(event.target.value)
-                  }
-                  placeholder="Send initial SMS"
-                  autoFocus
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                />
-              </div>
+              <InputField
+                label="Step Name"
+                value={stepName}
+                onChange={setStepName}
+                placeholder="Send initial SMS"
+              />
 
               <div>
-                <div className="mb-2">
+                <div className="mb-3">
                   <label className="block text-sm font-semibold text-slate-700">
                     Action
                   </label>
@@ -2081,8 +2152,7 @@ export default function WorkflowClient({
                 <div className="grid gap-2 sm:grid-cols-2">
                   {STEP_TYPES.map((type) => {
                     const Icon = iconForStep(type.value);
-                    const selected =
-                      stepType === type.value;
+                    const selected = stepType === type.value;
 
                     return (
                       <button
@@ -2091,9 +2161,7 @@ export default function WorkflowClient({
                         onClick={() => {
                           setStepType(type.value);
                           setStepConfig(
-                            stepConfiguration(
-                              type.value
-                            )
+                            stepConfiguration(type.value)
                           );
                         }}
                         className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
@@ -2129,10 +2197,9 @@ export default function WorkflowClient({
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-4 flex items-center gap-2">
-                  <Settings2
-                    size={16}
-                    className="text-slate-500"
-                  />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm ring-1 ring-slate-200">
+                    <Settings2 size={15} />
+                  </div>
 
                   <div>
                     <span className="text-sm font-bold text-slate-800">

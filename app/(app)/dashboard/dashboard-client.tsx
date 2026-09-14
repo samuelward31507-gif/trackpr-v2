@@ -129,23 +129,13 @@ function getInitials(lead: Lead) {
 function isPaidPayment(payment: Payment) {
   const status = (payment.status ?? "").toLowerCase();
 
-  return [
-    "paid",
-    "completed",
-    "succeeded",
-    "success",
-  ].includes(status);
+  return ["paid", "completed", "succeeded", "success"].includes(status);
 }
 
 function isWonEstimate(estimate: Estimate) {
   const status = (estimate.status ?? "").toLowerCase();
 
-  return [
-    "accepted",
-    "approved",
-    "won",
-    "converted",
-  ].includes(status);
+  return ["accepted", "approved", "won", "converted"].includes(status);
 }
 
 function isActiveJob(job: Job) {
@@ -295,11 +285,9 @@ export default function DashboardClient({
           job.payment_status ?? ""
         ).toLowerCase();
 
-        return ![
-          "paid",
-          "complete",
-          "completed",
-        ].includes(paymentStatus);
+        return !["paid", "complete", "completed"].includes(
+          paymentStatus
+        );
       })
       .reduce(
         (sum, job) => sum + Number(job.amount || 0),
@@ -315,10 +303,7 @@ export default function DashboardClient({
     return jobs.filter((job) => {
       const status = (job.status ?? "").toLowerCase();
 
-      return [
-        "completed",
-        "complete",
-      ].includes(status);
+      return ["completed", "complete"].includes(status);
     }).length;
   }, [jobs]);
 
@@ -332,11 +317,7 @@ export default function DashboardClient({
     return estimates
       .filter(
         (estimate) =>
-          ![
-            "rejected",
-            "declined",
-            "lost",
-          ].includes(
+          !["rejected", "declined", "lost"].includes(
             (estimate.status ?? "").toLowerCase()
           )
       )
@@ -470,7 +451,9 @@ export default function DashboardClient({
     if (!revenue && !estimateValue) return 0;
 
     return Math.min(
-      Math.round((estimateValue / Math.max(revenue, 1)) * 100),
+      Math.round(
+        (estimateValue / Math.max(revenue, 1)) * 100
+      ),
       999
     );
   }, [estimateValue, revenue]);
@@ -479,16 +462,19 @@ export default function DashboardClient({
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
-        {/* Header */}
+        {/* HEADER */}
         <header className="mb-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
                 Business Overview
               </div>
 
-              <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+              <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950 sm:text-4xl">
                 Dashboard
               </h1>
 
@@ -501,7 +487,7 @@ export default function DashboardClient({
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/leads"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
               >
                 <Plus className="h-4 w-4" />
                 New Lead
@@ -509,7 +495,7 @@ export default function DashboardClient({
 
               <Link
                 href="/estimates"
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
               >
                 <Plus className="h-4 w-4" />
                 New Estimate
@@ -518,7 +504,7 @@ export default function DashboardClient({
           </div>
         </header>
 
-        {/* KPI Cards */}
+        {/* KPI CARDS */}
         <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Total Revenue"
@@ -530,6 +516,7 @@ export default function DashboardClient({
             href="/payments"
             trend={revenueChange}
             trendLabel="vs last month"
+            accent="emerald"
           />
 
           <KpiCard
@@ -540,6 +527,7 @@ export default function DashboardClient({
             href="/leads"
             trend={leadChange}
             trendLabel="vs last month"
+            accent="blue"
           />
 
           <KpiCard
@@ -550,6 +538,7 @@ export default function DashboardClient({
             )} currently in pipeline`}
             icon={<FileText className="h-5 w-5" />}
             href="/estimates"
+            accent="violet"
           />
 
           <KpiCard
@@ -562,121 +551,135 @@ export default function DashboardClient({
               <BriefcaseBusiness className="h-5 w-5" />
             }
             href="/jobs"
+            accent="amber"
           />
         </section>
 
-        {/* Revenue + Sales Snapshot */}
+        {/* REVENUE + SNAPSHOT */}
         <section className="grid gap-6 xl:grid-cols-3">
 
-          {/* Revenue */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:col-span-2">
-            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-slate-950">
-                    Revenue
-                  </h2>
-
-                  <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    6 months
-                  </span>
-                </div>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Paid revenue collected over time.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
+          {/* REVENUE */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:col-span-2">
+            <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-right text-xs font-medium text-slate-400">
-                    This month
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold tracking-tight text-slate-950">
+                      Revenue
+                    </h2>
 
-                  <p className="mt-0.5 text-right text-lg font-bold tracking-tight text-slate-950">
-                    {formatCurrency(currentMonthRevenue)}
+                    <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      6 months
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Paid revenue collected over time.
                   </p>
                 </div>
 
-                {revenueChange !== 0 && (
-                  <div
-                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold ${
-                      revenueChange > 0
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-rose-50 text-rose-700"
-                    }`}
-                  >
-                    {revenueChange > 0 ? (
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowDownRight className="h-3.5 w-3.5" />
-                    )}
-                    {Math.abs(revenueChange)}%
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      This month
+                    </p>
+
+                    <p className="mt-0.5 text-right text-xl font-bold tracking-tight text-slate-950">
+                      {formatCurrency(currentMonthRevenue)}
+                    </p>
                   </div>
-                )}
+
+                  {revenueChange !== 0 && (
+                    <div
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold ${
+                        revenueChange > 0
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-rose-50 text-rose-700"
+                      }`}
+                    >
+                      {revenueChange > 0 ? (
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowDownRight className="h-3.5 w-3.5" />
+                      )}
+                      {Math.abs(revenueChange)}%
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="px-5 pb-6 pt-8 sm:px-6">
-              <div className="flex h-64 items-end gap-2 sm:gap-4">
-                {monthlyRevenue.map((month, index) => {
-                  const height =
-                    month.revenue === 0
-                      ? 4
-                      : Math.max(
-                          8,
-                          (month.revenue /
-                            maxMonthlyRevenue) *
-                            100
-                        );
-
-                  const isCurrentMonth =
-                    index === monthlyRevenue.length - 1;
-
-                  return (
+            <div className="px-5 pb-6 pt-7 sm:px-6">
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-x-0 top-0 flex h-52 flex-col justify-between">
+                  {[0, 1, 2, 3].map((line) => (
                     <div
-                      key={month.key}
-                      className="flex min-w-0 flex-1 flex-col items-center justify-end gap-3"
-                    >
-                      <div className="relative flex h-full w-full items-end justify-center">
-                        <div
-                          className={`group relative w-full max-w-16 rounded-t-xl transition-all ${
-                            isCurrentMonth
-                              ? "bg-slate-950"
-                              : "bg-slate-200 hover:bg-slate-300"
-                          }`}
-                          style={{
-                            height: `${height}%`,
-                          }}
-                        >
-                          <div className="pointer-events-none absolute -top-10 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-xl group-hover:block">
-                            {formatCurrency(month.revenue)}
+                      key={line}
+                      className="border-t border-dashed border-slate-100"
+                    />
+                  ))}
+                </div>
+
+                <div className="relative flex h-64 items-end gap-2 sm:gap-4">
+                  {monthlyRevenue.map((month, index) => {
+                    const height =
+                      month.revenue === 0
+                        ? 4
+                        : Math.max(
+                            8,
+                            (month.revenue /
+                              maxMonthlyRevenue) *
+                              100
+                          );
+
+                    const isCurrentMonth =
+                      index === monthlyRevenue.length - 1;
+
+                    return (
+                      <div
+                        key={month.key}
+                        className="flex min-w-0 flex-1 flex-col items-center justify-end gap-3"
+                      >
+                        <div className="relative flex h-full w-full items-end justify-center">
+                          <div
+                            className={`group relative w-full max-w-16 rounded-t-xl transition-all duration-500 ${
+                              isCurrentMonth
+                                ? "bg-slate-950 shadow-[0_8px_20px_rgba(15,23,42,0.12)]"
+                                : "bg-slate-200 hover:bg-slate-300"
+                            }`}
+                            style={{
+                              height: `${height}%`,
+                            }}
+                          >
+                            <div className="pointer-events-none absolute -top-10 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-xl group-hover:block">
+                              {formatCurrency(month.revenue)}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <span
-                        className={`text-xs font-medium ${
-                          isCurrentMonth
-                            ? "text-slate-900"
-                            : "text-slate-400"
-                        }`}
-                      >
-                        {month.label}
-                      </span>
-                    </div>
-                  );
-                })}
+                        <span
+                          className={`text-xs font-medium ${
+                            isCurrentMonth
+                              ? "text-slate-900"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {month.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Sales Snapshot */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-6 py-5">
+          {/* SALES SNAPSHOT */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-slate-100 px-6 py-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold text-slate-950">
+                  <h2 className="font-semibold tracking-tight text-slate-950">
                     Sales Snapshot
                   </h2>
 
@@ -685,7 +688,7 @@ export default function DashboardClient({
                   </p>
                 </div>
 
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
                   <Target className="h-5 w-5" />
                 </div>
               </div>
@@ -732,73 +735,84 @@ export default function DashboardClient({
             <div className="border-t border-slate-100 px-6 py-4">
               <Link
                 href="/reporting"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 transition hover:text-slate-950"
+                className="group inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-slate-950"
               >
                 View full reporting
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
             </div>
           </div>
         </section>
 
-        {/* Pipeline Health */}
-        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-slate-950">
-                  Pipeline Health
-                </h2>
+        {/* PIPELINE HEALTH */}
+        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="px-6 py-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
 
-                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                  Active
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold tracking-tight text-slate-950">
+                      Pipeline Health
+                    </h2>
+
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      Active
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    {openEstimates} open estimates representing{" "}
+                    <span className="font-semibold text-slate-700">
+                      {formatCompactCurrency(estimateValue)}
+                    </span>{" "}
+                    in potential work.
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                href="/estimates"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm"
+              >
+                Open pipeline
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Pipeline coverage
+                </span>
+
+                <span className="text-xs font-bold text-slate-700">
+                  {pipelineCoverage}%
                 </span>
               </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {openEstimates} open estimates representing{" "}
-                <span className="font-semibold text-slate-700">
-                  {formatCompactCurrency(estimateValue)}
-                </span>{" "}
-                in potential work.
-              </p>
-            </div>
-
-            <Link
-              href="/estimates"
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Open pipeline
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          <div className="border-t border-slate-100 px-6 py-5">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Pipeline coverage
-              </span>
-
-              <span className="text-xs font-bold text-slate-700">
-                {pipelineCoverage}%
-              </span>
-            </div>
-
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-slate-900 transition-all"
-                style={{
-                  width: `${Math.min(pipelineCoverage, 100)}%`,
-                }}
-              />
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-slate-950 transition-all duration-500"
+                  style={{
+                    width: `${Math.min(
+                      pipelineCoverage,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Activity Grid */}
+        {/* ACTIVITY */}
         <section className="mt-6 grid gap-6 xl:grid-cols-3">
 
-          {/* Leads */}
+          {/* RECENT LEADS */}
           <DashboardSection
             title="Recent Leads"
             subtitle="Your newest opportunities"
@@ -818,7 +832,7 @@ export default function DashboardClient({
                     href={`/leads/${lead.id}`}
                     className="group flex items-center gap-3 px-6 py-4 transition hover:bg-slate-50"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-600">
                       {getInitials(lead)}
                     </div>
 
@@ -845,7 +859,7 @@ export default function DashboardClient({
             )}
           </DashboardSection>
 
-          {/* Payments */}
+          {/* PAYMENTS */}
           <DashboardSection
             title="Recent Payments"
             subtitle="Latest collected revenue"
@@ -891,7 +905,7 @@ export default function DashboardClient({
             )}
           </DashboardSection>
 
-          {/* Reputation */}
+          {/* REPUTATION */}
           <DashboardSection
             title="Reputation"
             subtitle="Recent customer feedback"
@@ -932,7 +946,7 @@ export default function DashboardClient({
 
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-amber-400 transition-all"
+                    className="h-full rounded-full bg-amber-400 transition-all duration-500"
                     style={{
                       width: `${fiveStarPercentage}%`,
                     }}
@@ -966,7 +980,7 @@ export default function DashboardClient({
                       key={review.id}
                       className="flex items-center gap-3"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-500">
                         {(review.reviewer_name || "R")
                           .charAt(0)
                           .toUpperCase()}
@@ -995,16 +1009,16 @@ export default function DashboardClient({
           </DashboardSection>
         </section>
 
-        {/* Quick Actions */}
-        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
+        {/* QUICK ACTIONS */}
+        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="border-b border-slate-100 px-6 py-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
                 <Plus className="h-5 w-5" />
               </div>
 
               <div>
-                <h2 className="font-semibold text-slate-950">
+                <h2 className="font-semibold tracking-tight text-slate-950">
                   Quick Actions
                 </h2>
 
@@ -1046,15 +1060,15 @@ export default function DashboardClient({
           </div>
         </section>
 
-        {/* Bottom Insight */}
-        <section className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        {/* BOTTOM INSIGHT */}
+        <section className="mt-6 flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.12)] sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100">
-              <TrendingUp className="h-5 w-5 text-slate-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+              <TrendingUp className="h-5 w-5" />
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-white">
                 Keep the pipeline moving
               </p>
 
@@ -1068,7 +1082,7 @@ export default function DashboardClient({
           <div className="flex flex-wrap gap-2">
             <Link
               href="/estimates"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
             >
               Estimates
               <ArrowRight className="h-4 w-4" />
@@ -1076,7 +1090,7 @@ export default function DashboardClient({
 
             <Link
               href="/payments"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
             >
               Payments
               <ArrowRight className="h-4 w-4" />
@@ -1096,6 +1110,7 @@ function KpiCard({
   href,
   trend,
   trendLabel,
+  accent = "slate",
 }: {
   label: string;
   value: string;
@@ -1104,24 +1119,54 @@ function KpiCard({
   href: string;
   trend?: number;
   trendLabel?: string;
+  accent?: "slate" | "emerald" | "blue" | "violet" | "amber";
 }) {
+  const accentStyles = {
+    slate: {
+      icon: "bg-slate-100 text-slate-600",
+      hover: "group-hover:bg-slate-200",
+    },
+    emerald: {
+      icon: "bg-emerald-50 text-emerald-600",
+      hover: "group-hover:bg-emerald-100",
+    },
+    blue: {
+      icon: "bg-blue-50 text-blue-600",
+      hover: "group-hover:bg-blue-100",
+    },
+    violet: {
+      icon: "bg-violet-50 text-violet-600",
+      hover: "group-hover:bg-violet-100",
+    },
+    amber: {
+      icon: "bg-amber-50 text-amber-600",
+      hover: "group-hover:bg-amber-100",
+    },
+  };
+
+  const style = accentStyles[accent];
+
   return (
     <Link
       href={href}
-      className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg"
     >
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
             {label}
           </p>
 
-          <p className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-950 sm:text-[28px]">
+          <p className="mt-2 truncate text-2xl font-bold tracking-[-0.03em] text-slate-950 sm:text-[28px]">
             {value}
           </p>
         </div>
 
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition group-hover:bg-slate-100">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${style.icon} ${style.hover}`}
+        >
           {icon}
         </div>
       </div>
@@ -1147,11 +1192,13 @@ function KpiCard({
         )}
       </div>
 
-      {trendLabel && typeof trend === "number" && (
-        <p className="mt-1 text-[10px] text-slate-300">
-          {trendLabel}
-        </p>
-      )}
+      {trendLabel &&
+        typeof trend === "number" &&
+        trend !== 0 && (
+          <p className="mt-1 text-[10px] text-slate-300">
+            {trendLabel}
+          </p>
+        )}
     </Link>
   );
 }
@@ -1170,10 +1217,10 @@ function DashboardSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
         <div>
-          <h2 className="font-semibold text-slate-950">
+          <h2 className="font-semibold tracking-tight text-slate-950">
             {title}
           </h2>
 
@@ -1184,9 +1231,10 @@ function DashboardSection({
 
         <Link
           href={href}
-          className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
+          className="group inline-flex items-center gap-1 text-sm font-semibold text-slate-500 transition hover:text-slate-950"
         >
           {viewLabel}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </Link>
       </div>
 
@@ -1205,9 +1253,9 @@ function SnapshotRow({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between px-6 py-4">
+    <div className="group flex items-center justify-between px-6 py-4 transition hover:bg-slate-50">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-400">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-400 transition group-hover:bg-white group-hover:text-slate-600">
           {icon}
         </div>
 
@@ -1257,9 +1305,9 @@ function QuickAction({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-4 bg-white px-6 py-5 transition hover:bg-slate-50"
+      className="group flex items-center gap-4 bg-white px-6 py-5 transition-all duration-200 hover:bg-slate-50"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-slate-200">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-slate-200 group-hover:text-slate-700">
         {icon}
       </div>
 

@@ -127,9 +127,17 @@ export default function AIAgentsClient({
     });
   }, [agents, search, statusFilter]);
 
-  const activeCount = agents.filter((a) => a.status === "active").length;
-  const pausedCount = agents.filter((a) => a.status === "paused").length;
-  const draftCount = agents.filter((a) => a.status === "draft").length;
+  const activeCount = agents.filter(
+    (agent) => agent.status === "active"
+  ).length;
+
+  const pausedCount = agents.filter(
+    (agent) => agent.status === "paused"
+  ).length;
+
+  const draftCount = agents.filter(
+    (agent) => agent.status === "draft"
+  ).length;
 
   const totalConversations = agents.reduce(
     (sum, agent) => sum + (agent.total_conversations || 0),
@@ -162,10 +170,12 @@ export default function AIAgentsClient({
       tone: agent.tone ?? "professional",
       business_knowledge: agent.business_knowledge ?? "",
       services: agent.services ?? "",
-      qualification_questions: agent.qualification_questions ?? "",
+      qualification_questions:
+        agent.qualification_questions ?? "",
       operating_hours: agent.operating_hours ?? "",
       escalation_rules: agent.escalation_rules ?? "",
-      channels: agent.channels?.length ? agent.channels : ["sms"],
+      channels:
+        agent.channels?.length > 0 ? agent.channels : ["sms"],
       model: agent.model ?? "default",
       temperature: agent.temperature ?? 0.3,
     });
@@ -185,28 +195,30 @@ export default function AIAgentsClient({
     key: K,
     value: AgentForm[K]
   ) {
-    setForm((prev) => ({
-      ...prev,
+    setForm((current) => ({
+      ...current,
       [key]: value,
     }));
   }
 
   function toggleChannel(channel: string) {
-    setForm((prev) => {
-      const exists = prev.channels.includes(channel);
+    setForm((current) => {
+      const exists = current.channels.includes(channel);
 
       if (exists) {
-        const next = prev.channels.filter((item) => item !== channel);
+        const next = current.channels.filter(
+          (item) => item !== channel
+        );
 
         return {
-          ...prev,
+          ...current,
           channels: next.length ? next : [channel],
         };
       }
 
       return {
-        ...prev,
-        channels: [...prev.channels, channel],
+        ...current,
+        channels: [...current.channels, channel],
       };
     });
   }
@@ -235,12 +247,16 @@ export default function AIAgentsClient({
         const result = await response.json();
 
         if (!response.ok) {
-          throw new Error(result.error || "Failed to update agent.");
+          throw new Error(
+            result.error || "Failed to update agent."
+          );
         }
 
         setAgents((current) =>
           current.map((agent) =>
-            agent.id === editingAgent.id ? result.agent : agent
+            agent.id === editingAgent.id
+              ? result.agent
+              : agent
           )
         );
       } else {
@@ -258,10 +274,15 @@ export default function AIAgentsClient({
         const result = await response.json();
 
         if (!response.ok) {
-          throw new Error(result.error || "Failed to create agent.");
+          throw new Error(
+            result.error || "Failed to create agent."
+          );
         }
 
-        setAgents((current) => [result.agent, ...current]);
+        setAgents((current) => [
+          result.agent,
+          ...current,
+        ]);
       }
 
       setShowModal(false);
@@ -296,7 +317,9 @@ export default function AIAgentsClient({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to update status.");
+        throw new Error(
+          result.error || "Failed to update status."
+        );
       }
 
       setAgents((current) =>
@@ -333,7 +356,9 @@ export default function AIAgentsClient({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to delete agent.");
+        throw new Error(
+          result.error || "Failed to delete agent."
+        );
       }
 
       setAgents((current) =>
@@ -405,6 +430,7 @@ export default function AIAgentsClient({
           </div>
 
           <button
+            type="button"
             onClick={openCreate}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99]"
           >
@@ -466,15 +492,18 @@ export default function AIAgentsClient({
 
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
                 placeholder="Search agents..."
-                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
               />
 
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
+                  aria-label="Clear search"
                   className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 >
                   <X size={14} />
@@ -486,7 +515,9 @@ export default function AIAgentsClient({
               <div className="relative">
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value)
+                  }
                   className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100 sm:w-auto"
                 >
                   <option value="all">All statuses</option>
@@ -505,7 +536,10 @@ export default function AIAgentsClient({
 
               <p className="text-xs font-medium text-slate-400">
                 {filteredAgents.length}{" "}
-                {filteredAgents.length === 1 ? "agent" : "agents"} shown
+                {filteredAgents.length === 1
+                  ? "agent"
+                  : "agents"}{" "}
+                shown
               </p>
             </div>
           </div>
@@ -536,6 +570,7 @@ export default function AIAgentsClient({
 
             {agents.length === 0 && (
               <button
+                type="button"
                 onClick={openCreate}
                 className="mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
               >
@@ -544,17 +579,19 @@ export default function AIAgentsClient({
               </button>
             )}
 
-            {agents.length > 0 && (search || statusFilter !== "all") && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setStatusFilter("all");
-                }}
-                className="mt-6 inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Clear filters
-              </button>
-            )}
+            {agents.length > 0 &&
+              (search || statusFilter !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("all");
+                  }}
+                  className="mt-6 inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Clear filters
+                </button>
+              )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -604,7 +641,9 @@ export default function AIAgentsClient({
                       aria-label={`Actions for ${agent.name}`}
                       onClick={() =>
                         setShowMenu(
-                          showMenu === agent.id ? null : agent.id
+                          showMenu === agent.id
+                            ? null
+                            : agent.id
                         )
                       }
                       className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
@@ -633,7 +672,9 @@ export default function AIAgentsClient({
                               ? "Pause agent"
                               : "Activate agent"
                           }
-                          onClick={() => toggleStatus(agent)}
+                          onClick={() =>
+                            toggleStatus(agent)
+                          }
                         />
 
                         <div className="my-1 border-t border-slate-100" />
@@ -642,7 +683,9 @@ export default function AIAgentsClient({
                           danger
                           icon={<Trash2 size={15} />}
                           label="Delete agent"
-                          onClick={() => deleteAgent(agent)}
+                          onClick={() =>
+                            deleteAgent(agent)
+                          }
                         />
                       </div>
                     )}
@@ -650,10 +693,12 @@ export default function AIAgentsClient({
                 </div>
 
                 {/* STATS */}
-                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
                   <InfoStat
                     label="Conversations"
-                    value={agent.total_conversations || 0}
+                    value={
+                      agent.total_conversations || 0
+                    }
                   />
 
                   <InfoStat
@@ -663,19 +708,25 @@ export default function AIAgentsClient({
 
                   <InfoStat
                     label="Tone"
-                    value={agent.tone || "Professional"}
+                    value={
+                      agent.tone
+                        ? agent.tone
+                        : "Professional"
+                    }
                     capitalize
                   />
 
                   <InfoStat
                     label="Last active"
-                    value={formatDate(agent.last_active_at)}
+                    value={formatDate(
+                      agent.last_active_at
+                    )}
                   />
                 </div>
 
-                {/* CONFIG SUMMARY */}
+                {/* CONFIGURATION */}
                 <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
                         Primary purpose
@@ -688,13 +739,15 @@ export default function AIAgentsClient({
                       </p>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {(agent.channels || []).map((channel) => (
-                        <ChannelBadge
-                          key={channel}
-                          channel={channel}
-                        />
-                      ))}
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {(agent.channels || []).map(
+                        (channel) => (
+                          <ChannelBadge
+                            key={channel}
+                            channel={channel}
+                          />
+                        )
+                      )}
                     </div>
                   </div>
                 </div>
@@ -735,7 +788,7 @@ export default function AIAgentsClient({
           }}
         >
           <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-white shadow-2xl">
-            {/* MODAL HEADER */}
+            {/* HEADER */}
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
@@ -750,8 +803,8 @@ export default function AIAgentsClient({
                   </h2>
 
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Define how your agent behaves, communicates, and
-                    handles leads.
+                    Define how your agent behaves, communicates,
+                    and handles leads.
                   </p>
                 </div>
               </div>
@@ -765,7 +818,7 @@ export default function AIAgentsClient({
               </button>
             </div>
 
-            {/* MODAL BODY */}
+            {/* BODY */}
             <div className="overflow-y-auto bg-[#fafbfc] px-5 py-6 sm:px-6">
               <div className="mx-auto max-w-4xl space-y-6">
                 {/* BASIC */}
@@ -780,8 +833,11 @@ export default function AIAgentsClient({
                     <Field label="Agent name" required>
                       <input
                         value={form.name}
-                        onChange={(e) =>
-                          updateForm("name", e.target.value)
+                        onChange={(event) =>
+                          updateForm(
+                            "name",
+                            event.target.value
+                          )
                         }
                         placeholder="e.g. Lead Qualification Agent"
                         className="input"
@@ -791,10 +847,10 @@ export default function AIAgentsClient({
                     <Field label="Tone">
                       <select
                         value={form.tone}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           updateForm(
                             "tone",
-                            e.target.value as AgentForm["tone"]
+                            event.target.value as AgentForm["tone"]
                           )
                         }
                         className="input"
@@ -802,9 +858,15 @@ export default function AIAgentsClient({
                         <option value="professional">
                           Professional
                         </option>
-                        <option value="friendly">Friendly</option>
-                        <option value="casual">Casual</option>
-                        <option value="direct">Direct</option>
+                        <option value="friendly">
+                          Friendly
+                        </option>
+                        <option value="casual">
+                          Casual
+                        </option>
+                        <option value="direct">
+                          Direct
+                        </option>
                         <option value="empathetic">
                           Empathetic
                         </option>
@@ -814,8 +876,11 @@ export default function AIAgentsClient({
                     <Field label="Description" full>
                       <input
                         value={form.description}
-                        onChange={(e) =>
-                          updateForm("description", e.target.value)
+                        onChange={(event) =>
+                          updateForm(
+                            "description",
+                            event.target.value
+                          )
                         }
                         placeholder="What does this agent do?"
                         className="input"
@@ -825,8 +890,11 @@ export default function AIAgentsClient({
                     <Field label="Primary purpose" full>
                       <textarea
                         value={form.purpose}
-                        onChange={(e) =>
-                          updateForm("purpose", e.target.value)
+                        onChange={(event) =>
+                          updateForm(
+                            "purpose",
+                            event.target.value
+                          )
                         }
                         placeholder="Example: Qualify inbound contractor leads and determine whether they need an estimate."
                         className="textarea"
@@ -848,8 +916,11 @@ export default function AIAgentsClient({
                     <Field label="Services">
                       <textarea
                         value={form.services}
-                        onChange={(e) =>
-                          updateForm("services", e.target.value)
+                        onChange={(event) =>
+                          updateForm(
+                            "services",
+                            event.target.value
+                          )
                         }
                         placeholder="List the services this agent should know about..."
                         className="textarea"
@@ -860,10 +931,10 @@ export default function AIAgentsClient({
                     <Field label="Business knowledge">
                       <textarea
                         value={form.business_knowledge}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           updateForm(
                             "business_knowledge",
-                            e.target.value
+                            event.target.value
                           )
                         }
                         placeholder="Company information, service areas, pricing guidance, policies, FAQs, financing information, etc."
@@ -875,10 +946,10 @@ export default function AIAgentsClient({
                     <Field label="Operating hours">
                       <textarea
                         value={form.operating_hours}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           updateForm(
                             "operating_hours",
-                            e.target.value
+                            event.target.value
                           )
                         }
                         placeholder="Example: Mon-Fri 8am-6pm, Sat 9am-2pm, Sun closed."
@@ -900,11 +971,13 @@ export default function AIAgentsClient({
                   <div className="mt-5 space-y-4">
                     <Field label="Qualification questions">
                       <textarea
-                        value={form.qualification_questions}
-                        onChange={(e) =>
+                        value={
+                          form.qualification_questions
+                        }
+                        onChange={(event) =>
                           updateForm(
                             "qualification_questions",
-                            e.target.value
+                            event.target.value
                           )
                         }
                         placeholder={`Example:
@@ -920,10 +993,10 @@ export default function AIAgentsClient({
                     <Field label="Escalation / human handoff rules">
                       <textarea
                         value={form.escalation_rules}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           updateForm(
                             "escalation_rules",
-                            e.target.value
+                            event.target.value
                           )
                         }
                         placeholder="When should the agent stop and notify a human? Example: emergency calls, angry customers, pricing disputes, high-value opportunities."
@@ -946,10 +1019,10 @@ export default function AIAgentsClient({
                     <Field label="System instructions">
                       <textarea
                         value={form.system_prompt}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           updateForm(
                             "system_prompt",
-                            e.target.value
+                            event.target.value
                           )
                         }
                         placeholder="Give the agent additional instructions about how it should behave, what it should never do, and how it should communicate."
@@ -962,13 +1035,20 @@ export default function AIAgentsClient({
                       <Field label="Model">
                         <select
                           value={form.model}
-                          onChange={(e) =>
-                            updateForm("model", e.target.value)
+                          onChange={(event) =>
+                            updateForm(
+                              "model",
+                              event.target.value
+                            )
                           }
                           className="input"
                         >
-                          <option value="default">Default</option>
-                          <option value="fast">Fast</option>
+                          <option value="default">
+                            Default
+                          </option>
+                          <option value="fast">
+                            Fast
+                          </option>
                           <option value="balanced">
                             Balanced
                           </option>
@@ -986,7 +1066,9 @@ export default function AIAgentsClient({
                             </span>
 
                             <span className="rounded-lg bg-white px-2 py-1 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200">
-                              {Number(form.temperature).toFixed(1)}
+                              {Number(
+                                form.temperature
+                              ).toFixed(1)}
                             </span>
                           </div>
 
@@ -996,10 +1078,10 @@ export default function AIAgentsClient({
                             max="1"
                             step="0.1"
                             value={form.temperature}
-                            onChange={(e) =>
+                            onChange={(event) =>
                               updateForm(
                                 "temperature",
-                                Number(e.target.value)
+                                Number(event.target.value)
                               )
                             }
                             className="w-full accent-slate-900"
@@ -1028,31 +1110,43 @@ export default function AIAgentsClient({
                       icon={<MessageSquare size={17} />}
                       label="SMS"
                       description="Text conversations"
-                      selected={form.channels.includes("sms")}
-                      onClick={() => toggleChannel("sms")}
+                      selected={form.channels.includes(
+                        "sms"
+                      )}
+                      onClick={() =>
+                        toggleChannel("sms")
+                      }
                     />
 
                     <ChannelButton
                       icon={<Mail size={17} />}
                       label="Email"
                       description="Email conversations"
-                      selected={form.channels.includes("email")}
-                      onClick={() => toggleChannel("email")}
+                      selected={form.channels.includes(
+                        "email"
+                      )}
+                      onClick={() =>
+                        toggleChannel("email")
+                      }
                     />
 
                     <ChannelButton
                       icon={<Phone size={17} />}
                       label="Phone"
                       description="Voice conversations"
-                      selected={form.channels.includes("phone")}
-                      onClick={() => toggleChannel("phone")}
+                      selected={form.channels.includes(
+                        "phone"
+                      )}
+                      onClick={() =>
+                        toggleChannel("phone")
+                      }
                     />
                   </div>
                 </section>
               </div>
             </div>
 
-            {/* MODAL FOOTER */}
+            {/* FOOTER */}
             <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <Clock3 size={14} />
@@ -1188,7 +1282,9 @@ function MetricCard({
         {value.toLocaleString()}
       </p>
 
-      <p className="mt-1 text-xs text-slate-400">{helper}</p>
+      <p className="mt-1 text-xs text-slate-400">
+        {helper}
+      </p>
     </div>
   );
 }
@@ -1310,7 +1406,9 @@ function ChannelButton({
 
           <span
             className={`text-sm font-bold ${
-              selected ? "text-violet-700" : "text-slate-800"
+              selected
+                ? "text-violet-700"
+                : "text-slate-800"
             }`}
           >
             {label}
@@ -1331,10 +1429,16 @@ function ChannelButton({
   );
 }
 
-function ChannelBadge({ channel }: { channel: string }) {
+function ChannelBadge({
+  channel,
+}: {
+  channel: string;
+}) {
   const normalized = channel.toLowerCase();
 
-  let icon: React.ReactNode = <MessageSquare size={12} />;
+  let icon: React.ReactNode = (
+    <MessageSquare size={12} />
+  );
 
   if (normalized === "email") {
     icon = <Mail size={12} />;

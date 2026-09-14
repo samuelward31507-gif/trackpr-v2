@@ -13,12 +13,19 @@ export default async function AIAgentsPage() {
     redirect("/login");
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "AI agents membership load error:",
+      membershipError
+    );
+  }
 
   if (!membership?.organization_id) {
     redirect("/dashboard");
@@ -37,7 +44,7 @@ export default async function AIAgentsPage() {
   return (
     <AIAgentsClient
       organizationId={membership.organization_id}
-      initialAgents={agents ?? []}
+      initialAgents={(agents ?? []) as any}
     />
   );
 }
