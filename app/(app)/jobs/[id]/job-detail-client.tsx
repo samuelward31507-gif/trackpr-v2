@@ -432,6 +432,11 @@ export default function JobDetailClient({
       setSaving(true);
       setError("");
 
+      const completedDateValue = getTodayDate();
+
+      /*
+       * 1. Mark the job completed in Trackpr.
+       */
       const { data, error: rpcError } =
         await supabase.rpc("update_job", {
           p_job_id: job.id,
@@ -443,7 +448,7 @@ export default function JobDetailClient({
           p_payment_status: job.payment_status,
           p_start_date: job.start_date,
           p_due_date: job.due_date,
-          p_completed_date: getTodayDate(),
+          p_completed_date: completedDateValue,
           p_notes: job.notes,
         });
 
@@ -458,9 +463,164 @@ export default function JobDetailClient({
 
       setJob(updatedJob);
       setStatus("completed");
-      setCompletedDate(getTodayDate());
+      setCompletedDate(completedDateValue);
+
+      /*
+       * 2. Create the job_completed automation event.
+       *
+       * IMPORTANT:
+       * We include the customer information here so the existing
+       * n8n workflows can use the customer's phone number.
+       */
+      const customer = job.leads;
+
+      const customerName =
+        getLeadName(customer);
+
+      const customerPhone =
+        customer?.phone ?? "";
+
+      const customerEmail =
+        customer?.email ?? "";
+
+      const { data: automationEvent, error: eventError } =
+        await supabase
+          .from("automation_events")
+          .insert({
+            organization_id:
+              job.organization_id,
+
+            event_type:
+              "job_completed",
+
+            lead_id:
+              job.lead_id,
+
+            contact_id:
+              null,
+
+            appointment_id:
+              null,
+
+            estimate_id:
+              job.estimate_id,
+
+            job_id:
+              job.id,
+
+            payment_id:
+              null,
+
+            review_id:
+              null,
+
+            payload: {
+              job: {
+                job_id: job.id,
+                id: job.id,
+                organization_id:
+                  job.organization_id,
+                lead_id:
+                  job.lead_id,
+                estimate_id:
+                  job.estimate_id,
+                title:
+                  job.title,
+                amount:
+                  Number(job.amount) || 0,
+                status:
+                  "completed",
+                payment_status:
+                  job.payment_status,
+                start_date:
+                  job.start_date,
+                due_date:
+                  job.due_date,
+                completed_date:
+                  completedDateValue,
+                notes:
+                  job.notes,
+              },
+
+              customer_name:
+                customerName,
+
+              customer_phone:
+                customerPhone,
+
+              customer_email:
+                customerEmail,
+            },
+
+            status:
+              "pending",
+          })
+          .select("*")
+          .single();
+
+      if (eventError) {
+        console.error(
+          "Job completed automation event creation failed:",
+          eventError
+        );
+
+        throw new Error(
+          `Job was completed, but the automation event could not be created: ${eventError.message}`
+        );
+      }
+
+      /*
+       * 3. Send the event through the existing Trackpr
+       * automation dispatcher.
+       *
+       * The dispatcher will route job_completed to the
+       * configured Review Request / Completion workflows.
+       */
+      const dispatchResponse =
+        await fetch(
+          "/api/automation/events",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              event_id:
+                automationEvent.id,
+
+              organization_id:
+                job.organization_id,
+            }),
+          }
+        );
+
+      const dispatchResult =
+        await dispatchResponse.json();
+
+      if (!dispatchResponse.ok) {
+        console.error(
+          "Job completed automation dispatch failed:",
+          dispatchResult
+        );
+
+        throw new Error(
+          `Job was completed and the event was created, but automation dispatch failed: ${
+            dispatchResult?.error ||
+            "Unknown dispatcher error."
+          }`
+        );
+      }
+
+      console.log(
+        "Job completed automation dispatched successfully:",
+        dispatchResult
+      );
     } catch (err: any) {
       console.error(err);
+
       setError(
         err?.message ||
           "Something went wrong while completing the job."
