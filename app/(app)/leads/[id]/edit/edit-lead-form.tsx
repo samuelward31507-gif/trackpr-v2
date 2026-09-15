@@ -31,142 +31,361 @@ export default function EditLeadForm({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const [firstName, setFirstName] = useState(lead.first_name ?? "");
-  const [lastName, setLastName] = useState(lead.last_name ?? "");
-  const [email, setEmail] = useState(lead.email ?? "");
-  const [phone, setPhone] = useState(lead.phone ?? "");
-  const [status, setStatus] = useState(lead.status ?? "new");
-  const [source, setSource] = useState(lead.source ?? "");
-  const [serviceInterest, setServiceInterest] = useState(
-    lead.service_interest ?? ""
+  const [firstName, setFirstName] = useState(
+    lead.first_name ?? ""
   );
 
-  const [nextFollowUp, setNextFollowUp] = useState(
-    lead.next_follow_up_at
-      ? new Date(lead.next_follow_up_at).toISOString().slice(0, 16)
-      : ""
+  const [lastName, setLastName] = useState(
+    lead.last_name ?? ""
   );
 
-  const [notes, setNotes] = useState(lead.notes ?? "");
+  const [email, setEmail] = useState(
+    lead.email ?? ""
+  );
+
+  const [phone, setPhone] = useState(
+    lead.phone ?? ""
+  );
+
+  const [status, setStatus] = useState(
+    lead.status ?? "new"
+  );
+
+  const [source, setSource] = useState(
+    lead.source ?? ""
+  );
+
+  const [serviceInterest, setServiceInterest] =
+    useState(lead.service_interest ?? "");
+
+  const [nextFollowUp, setNextFollowUp] =
+    useState(
+      lead.next_follow_up_at
+        ? new Date(
+            lead.next_follow_up_at
+          )
+            .toISOString()
+            .slice(0, 16)
+        : ""
+    );
+
+  const [notes, setNotes] = useState(
+    lead.notes ?? ""
+  );
 
   async function handleSubmit(
-  e: React.FormEvent<HTMLFormElement>
-) {
-  e.preventDefault();
+    e: React.FormEvent<HTMLFormElement>
+  ) {
+    e.preventDefault();
 
-  setLoading(true);
-  setErrorMessage("");
+    setLoading(true);
+    setErrorMessage("");
 
-  const previousStatus = lead.status;
-  const previousNotes = lead.notes ?? "";
-  const previousFollowUp = lead.next_follow_up_at
-    ? new Date(lead.next_follow_up_at).getTime()
-    : null;
+    const previousStatus = lead.status;
 
-  const newFollowUp = nextFollowUp
-    ? new Date(nextFollowUp).getTime()
-    : null;
+    const previousNotes =
+      lead.notes ?? "";
 
-  const { error } = await supabase
-    .from("leads")
-    .update({
-      first_name: firstName || null,
-      last_name: lastName || null,
-      email: email || null,
-      phone: phone || null,
-      status,
-      source: source || null,
-      service_interest: serviceInterest || null,
-      next_follow_up_at: nextFollowUp
-        ? new Date(nextFollowUp).toISOString()
-        : null,
-      notes: notes || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", lead.id);
+    const previousFollowUp =
+      lead.next_follow_up_at
+        ? new Date(
+            lead.next_follow_up_at
+          ).getTime()
+        : null;
 
-  if (error) {
-    console.error("Error updating lead:", error);
-    setErrorMessage(error.message);
-    setLoading(false);
-    return;
-  }
+    const newFollowUp = nextFollowUp
+      ? new Date(nextFollowUp).getTime()
+      : null;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    /*
+     * Update lead.
+     */
+    const { error } = await supabase
+      .from("leads")
+      .update({
+        first_name:
+          firstName.trim() || null,
 
-  if (user) {
-    const activities = [];
+        last_name:
+          lastName.trim() || null,
 
-    if (previousStatus !== status) {
-      activities.push({
-        organization_id: lead.organization_id,
-        lead_id: lead.id,
-        user_id: user.id,
-        activity_type: "status_changed",
-        title: "Status changed",
-        description: `${
-          previousStatus.charAt(0).toUpperCase() +
-          previousStatus.slice(1)
-        } → ${
-          status.charAt(0).toUpperCase() +
-          status.slice(1)
-        }`,
-        metadata: {
-          previous_status: previousStatus,
-          new_status: status,
-        },
-      });
+        email:
+          email.trim() || null,
+
+        phone:
+          phone.trim() || null,
+
+        status,
+
+        source:
+          source || null,
+
+        service_interest:
+          serviceInterest.trim() || null,
+
+        next_follow_up_at:
+          nextFollowUp
+            ? new Date(
+                nextFollowUp
+              ).toISOString()
+            : null,
+
+        notes:
+          notes.trim() || null,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", lead.id);
+
+    if (error) {
+      console.error(
+        "Error updating lead:",
+        error
+      );
+
+      setErrorMessage(
+        error.message
+      );
+
+      setLoading(false);
+      return;
     }
 
-    if (previousNotes !== notes) {
-      activities.push({
-        organization_id: lead.organization_id,
-        lead_id: lead.id,
-        user_id: user.id,
-        activity_type: "note_added",
-        title: previousNotes
-          ? "Notes updated"
-          : "Note added",
-        description: notes
-          ? "Lead notes were updated."
-          : "Lead notes were cleared.",
-      });
+    /*
+     * Get authenticated user.
+     */
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    /*
+     * Record CRM activities.
+     */
+    if (user) {
+      const activities = [];
+
+      if (
+        previousStatus !== status
+      ) {
+        activities.push({
+          organization_id:
+            lead.organization_id,
+
+          lead_id:
+            lead.id,
+
+          user_id:
+            user.id,
+
+          activity_type:
+            "status_changed",
+
+          title:
+            "Status changed",
+
+          description: `${
+            previousStatus
+              .charAt(0)
+              .toUpperCase() +
+            previousStatus.slice(1)
+          } → ${
+            status
+              .charAt(0)
+              .toUpperCase() +
+            status.slice(1)
+          }`,
+
+          metadata: {
+            previous_status:
+              previousStatus,
+
+            new_status:
+              status,
+          },
+        });
+      }
+
+      if (
+        previousNotes !== notes
+      ) {
+        activities.push({
+          organization_id:
+            lead.organization_id,
+
+          lead_id:
+            lead.id,
+
+          user_id:
+            user.id,
+
+          activity_type:
+            "note_added",
+
+          title:
+            previousNotes
+              ? "Notes updated"
+              : "Note added",
+
+          description:
+            notes
+              ? "Lead notes were updated."
+              : "Lead notes were cleared.",
+        });
+      }
+
+      if (
+        previousFollowUp !==
+        newFollowUp
+      ) {
+        activities.push({
+          organization_id:
+            lead.organization_id,
+
+          lead_id:
+            lead.id,
+
+          user_id:
+            user.id,
+
+          activity_type:
+            "follow_up_scheduled",
+
+          title:
+            newFollowUp
+              ? "Follow-up scheduled"
+              : "Follow-up cleared",
+
+          description:
+            newFollowUp
+              ? new Date(
+                  nextFollowUp
+                ).toLocaleString()
+              : "The scheduled follow-up was removed.",
+        });
+      }
+
+      if (
+        activities.length > 0
+      ) {
+        const {
+          error: activityError,
+        } = await supabase
+          .from("lead_activities")
+          .insert(activities);
+
+        if (activityError) {
+          console.error(
+            "Lead was updated, but activities could not be recorded:",
+            activityError
+          );
+        }
+      }
     }
 
-    if (previousFollowUp !== newFollowUp) {
-      activities.push({
-        organization_id: lead.organization_id,
-        lead_id: lead.id,
-        user_id: user.id,
-        activity_type: "follow_up_scheduled",
-        title: newFollowUp
-          ? "Follow-up scheduled"
-          : "Follow-up cleared",
-        description: newFollowUp
-          ? new Date(nextFollowUp).toLocaleString()
-          : "The scheduled follow-up was removed.",
-      });
-    }
+    /*
+     * LOST LEAD REACTIVATION AUTOMATION
+     *
+     * Only trigger when the lead's
+     * status actually changes TO lost.
+     */
+    if (
+      previousStatus !== "lost" &&
+      status === "lost"
+    ) {
+      try {
+        console.log(
+          "LOST LEAD REACTIVATION STARTED",
+          {
+            leadId: lead.id,
+            organizationId:
+              lead.organization_id,
+          }
+        );
 
-    if (activities.length > 0) {
-      const { error: activityError } = await supabase
-        .from("lead_activities")
-        .insert(activities);
+        const response =
+          await fetch(
+            "/api/automation/lost-lead",
+            {
+              method: "POST",
 
-      if (activityError) {
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                lead_id:
+                  lead.id,
+
+                organization_id:
+                  lead.organization_id,
+              }),
+            }
+          );
+
+        const responseText =
+          await response.text();
+
+        let responseData: any =
+          null;
+
+        try {
+          responseData =
+            responseText
+              ? JSON.parse(
+                  responseText
+                )
+              : null;
+        } catch {
+          responseData =
+            responseText;
+        }
+
+        console.log(
+          "LOST LEAD REACTIVATION RESPONSE",
+          {
+            status:
+              response.status,
+
+            data:
+              responseData,
+          }
+        );
+
+        if (!response.ok) {
+          console.error(
+            "Lost lead reactivation failed:",
+            responseData
+          );
+        } else {
+          console.log(
+            "Lost lead reactivation automation started successfully:",
+            responseData
+          );
+        }
+      } catch (automationError) {
+        /*
+         * Do not prevent the lead from
+         * being saved if the automation
+         * request fails.
+         */
         console.error(
-          "Lead was updated, but activities could not be recorded:",
-          activityError
+          "Lost lead reactivation request failed:",
+          automationError
         );
       }
     }
-  }
 
-  router.push(`/leads/${lead.id}`);
-  router.refresh();
-}
+    /*
+     * Return to Lead Detail.
+     */
+    router.push(
+      `/leads/${lead.id}`
+    );
+
+    router.refresh();
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -205,7 +424,6 @@ export default function EditLeadForm({
         )}
 
         <div className="space-y-8">
-
           {/* Contact Information */}
           <section>
             <h2 className="text-base font-semibold text-slate-950">
@@ -288,7 +506,9 @@ export default function EditLeadForm({
               <Field
                 label="Service interest"
                 value={serviceInterest}
-                onChange={setServiceInterest}
+                onChange={
+                  setServiceInterest
+                }
                 placeholder="Roof replacement"
               />
 
@@ -299,8 +519,14 @@ export default function EditLeadForm({
 
                 <input
                   type="datetime-local"
-                  value={nextFollowUp}
-                  onChange={(e) => setNextFollowUp(e.target.value)}
+                  value={
+                    nextFollowUp
+                  }
+                  onChange={(e) =>
+                    setNextFollowUp(
+                      e.target.value
+                    )
+                  }
                   className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                 />
               </label>
@@ -317,7 +543,11 @@ export default function EditLeadForm({
 
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) =>
+                setNotes(
+                  e.target.value
+                )
+              }
               placeholder="Add notes about this lead..."
               rows={6}
               className="mt-5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
@@ -345,7 +575,9 @@ export default function EditLeadForm({
               <Save className="h-4 w-4" />
             )}
 
-            {loading ? "Saving..." : "Save Changes"}
+            {loading
+              ? "Saving..."
+              : "Save Changes"}
           </button>
         </div>
       </form>
@@ -375,8 +607,12 @@ function Field({
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
+        placeholder={
+          placeholder
+        }
         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
       />
     </label>
@@ -404,16 +640,28 @@ function SelectField({
 
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
       >
-        <option value="">{placeholder}</option>
+        <option value="">
+          {placeholder}
+        </option>
 
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option.charAt(0).toUpperCase() + option.slice(1)}
-          </option>
-        ))}
+        {options.map(
+          (option) => (
+            <option
+              key={option}
+              value={option}
+            >
+              {option
+                .charAt(0)
+                .toUpperCase() +
+                option.slice(1)}
+            </option>
+          )
+        )}
       </select>
     </label>
   );
