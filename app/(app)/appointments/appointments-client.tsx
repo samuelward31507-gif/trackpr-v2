@@ -21,7 +21,7 @@ type Appointment = {
   lead_id: string | null;
   assigned_to: string | null;
   title: string;
-  appointment_type: string;
+  appointment_type: string | null;
   status: AppointmentStatus;
   start_at: string;
   end_at: string | null;
@@ -43,6 +43,11 @@ type TeamMember = {
   user_id: string;
 };
 
+type AutomationDiagnostic = {
+  type: "info" | "success" | "error";
+  message: string;
+};
+
 type Props = {
   initialAppointments: Appointment[];
   leads: Lead[];
@@ -51,660 +56,132 @@ type Props = {
   organizationId: string;
 };
 
-const appointmentTypes = [
-  { value: "service", label: "Service Call" },
-  { value: "estimate", label: "Estimate" },
-  { value: "consultation", label: "Consultation" },
-  { value: "installation", label: "Installation" },
-  { value: "inspection", label: "Inspection" },
-  { value: "follow_up", label: "Follow-Up" },
-  { value: "other", label: "Other" },
-];
+const supabase = createClient();
 
-const statusOptions: {
-  value: AppointmentStatus;
-  label: string;
-}[] = [
-  { value: "scheduled", label: "Scheduled" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "completed", label: "Completed" },
-  { value: "no_show", label: "No Show" },
-  { value: "cancelled", label: "Cancelled" },
-];
+const statusLabels: Record<AppointmentStatus, string> = {
+  scheduled: "Scheduled",
+  confirmed: "Confirmed",
+  completed: "Completed",
+  no_show: "No Show",
+  cancelled: "Cancelled",
+};
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
+const statusStyles: Record<AppointmentStatus, string> = {
+  scheduled:
+    "border-slate-200 bg-slate-50 text-slate-700",
+  confirmed:
+    "border-blue-200 bg-blue-50 text-blue-700",
+  completed:
+    "border-emerald-200 bg-emerald-50 text-emerald-700",
+  no_show:
+    "border-amber-200 bg-amber-50 text-amber-700",
+  cancelled:
+    "border-rose-200 bg-rose-50 text-rose-700",
+};
 
-function getDateParts(date: Date) {
-  return {
-    year: date.getFullYear(),
-    month: date.getMonth() + 1,
-    day: date.getDate(),
-  };
-}
-
-function getTimeParts(date: Date) {
-  return {
-    hour: date.getHours(),
-    minute: date.getMinutes(),
-  };
-}
-
-function createDateFromParts(
-  date: string,
-  time: string
-): Date | null {
-  if (!date || !time) return null;
-
-  const [year, month, day] = date
-    .split("-")
-    .map(Number);
-
-  const [hour, minute] = time
-    .split(":")
-    .map(Number);
-
-  if (
-    !year ||
-    !month ||
-    !day ||
-    Number.isNaN(hour) ||
-    Number.isNaN(minute)
-  ) {
-    return null;
-  }
-
-  const result = new Date(
-    year,
-    month - 1,
-    day,
-    hour,
-    minute,
-    0,
-    0
-  );
-
-  if (
-    result.getFullYear() !== year ||
-    result.getMonth() !== month - 1 ||
-    result.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return result;
-}
-
-function formatTimeOption(time: string) {
-  if (!time) return "";
-
-  const [hourString, minuteString] =
-    time.split(":");
-
-  let hour = Number(hourString);
-
-  if (Number.isNaN(hour)) return time;
-
-  const minute = minuteString || "00";
-  const suffix = hour >= 12 ? "PM" : "AM";
-
-  if (hour === 0) hour = 12;
-  if (hour > 12) hour -= 12;
-
-  return `${hour}:${minute} ${suffix}`;
-}
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString(
-    [],
-    {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    }
-  );
-}
-
-function formatShortDate(date: Date) {
-  return date.toLocaleDateString([], {
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
-  });
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
-function formatTime(dateString: string) {
-  return new Date(dateString).toLocaleTimeString(
-    [],
-    {
-      hour: "numeric",
-      minute: "2-digit",
-    }
-  );
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
-function getLeadName(lead?: Lead | null) {
-  if (!lead) return "No lead linked";
-
-  const name = [
-    lead.first_name,
-    lead.last_name,
+function getErrorDetails(error: any) {
+  return [
+    error?.message
+      ? `Message: ${error.message}`
+      : "",
+    error?.code
+      ? `Code: ${error.code}`
+      : "",
+    error?.details
+      ? `Details: ${error.details}`
+      : "",
+    error?.hint
+      ? `Hint: ${error.hint}`
+      : "",
   ]
     .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  return name || "Unnamed lead";
+    .join(" | ");
 }
 
-function getStartOfWeek(date: Date) {
-  const result = new Date(date);
-  const day = result.getDay();
-
-  result.setDate(result.getDate() - day);
-  result.setHours(0, 0, 0, 0);
-
-  return result;
-}
-
-function getStatusClasses(
-  status: AppointmentStatus
-) {
-  switch (status) {
-    case "confirmed":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-    case "completed":
-      return "border-blue-200 bg-blue-50 text-blue-700";
-
-    case "no_show":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-
-    case "cancelled":
-      return "border-red-200 bg-red-50 text-red-700";
-
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-}
-
-function getAppointmentBlockClasses(
-  status: AppointmentStatus
-) {
-  switch (status) {
-    case "confirmed":
-      return "border-emerald-300 bg-emerald-100 text-emerald-900";
-
-    case "completed":
-      return "border-blue-300 bg-blue-100 text-blue-900";
-
-    case "no_show":
-      return "border-amber-300 bg-amber-100 text-amber-900";
-
-    case "cancelled":
-      return "border-red-300 bg-red-100 text-red-900 opacity-60";
-
-    default:
-      return "border-slate-300 bg-white text-slate-900";
-  }
-}
-
-function DateSelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  /*
-   * IMPORTANT:
-   * Do not use new Date() during the initial render here.
-   * The fallback date is deterministic so server and browser
-   * render the same markup.
-   */
-  const fallbackDate = new Date(
-    2000,
-    0,
+function getMonthStart(date: Date) {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
     1
   );
+}
 
-  const fallbackParts =
-    getDateParts(fallbackDate);
-
-  const parts = value
-    ? value.split("-").map(Number)
-    : [
-        fallbackParts.year,
-        fallbackParts.month,
-        fallbackParts.day,
-      ];
-
-  const year = parts[0];
-  const month = parts[1];
-  const day = parts[2];
-
-  const years = Array.from(
-    { length: 11 },
-    (_, index) => 1998 + index
-  );
-
-  const daysInMonth = new Date(
-    year,
-    month,
+function getMonthEnd(date: Date) {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
     0
-  ).getDate();
-
-  function updateDate(
-    nextYear: number,
-    nextMonth: number,
-    nextDay: number
-  ) {
-    const safeDay = Math.min(
-      nextDay || 1,
-      new Date(
-        nextYear,
-        nextMonth,
-        0
-      ).getDate()
-    );
-
-    onChange(
-      `${nextYear}-${pad(nextMonth)}-${pad(
-        safeDay
-      )}`
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-[1fr_1fr_1.15fr] gap-2">
-      <select
-        value={month}
-        onChange={(event) =>
-          updateDate(
-            year,
-            Number(event.target.value),
-            day
-          )
-        }
-        className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400"
-      >
-        {Array.from(
-          { length: 12 },
-          (_, index) => {
-            const monthNumber = index + 1;
-
-            return (
-              <option
-                key={monthNumber}
-                value={monthNumber}
-              >
-                {new Date(
-                  2000,
-                  index,
-                  1
-                ).toLocaleDateString([], {
-                  month: "short",
-                })}
-              </option>
-            );
-          }
-        )}
-      </select>
-
-      <select
-        value={day}
-        onChange={(event) =>
-          updateDate(
-            year,
-            month,
-            Number(event.target.value)
-          )
-        }
-        className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400"
-      >
-        {Array.from(
-          { length: daysInMonth },
-          (_, index) => {
-            const dayNumber = index + 1;
-
-            return (
-              <option
-                key={dayNumber}
-                value={dayNumber}
-              >
-                {dayNumber}
-              </option>
-            );
-          }
-        )}
-      </select>
-
-      <select
-        value={year}
-        onChange={(event) =>
-          updateDate(
-            Number(event.target.value),
-            month,
-            day
-          )
-        }
-        className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400"
-      >
-        {years.map((yearOption) => (
-          <option
-            key={yearOption}
-            value={yearOption}
-          >
-            {yearOption}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }
 
-function TimeSelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const options: string[] = [];
+function getCalendarDays(date: Date) {
+  const monthStart = getMonthStart(date);
+  const monthEnd = getMonthEnd(date);
 
-  for (let hour = 7; hour <= 22; hour++) {
-    for (
-      let minute = 0;
-      minute < 60;
-      minute += 15
-    ) {
-      if (hour === 22 && minute > 0) {
-        continue;
-      }
+  const startDay = monthStart.getDay();
+  const daysInMonth = monthEnd.getDate();
 
-      options.push(
-        `${pad(hour)}:${pad(minute)}`
+  const totalCells = Math.ceil(
+    (startDay + daysInMonth) / 7
+  ) * 7;
+
+  return Array.from(
+    { length: totalCells },
+    (_, index) => {
+      const dayNumber =
+        index - startDay + 1;
+
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        dayNumber
       );
     }
-  }
-
-  return (
-    <select
-      value={value}
-      onChange={(event) =>
-        onChange(event.target.value)
-      }
-      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400"
-    >
-      <option value="">Select time</option>
-
-      {options.map((time) => (
-        <option key={time} value={time}>
-          {formatTimeOption(time)}
-        </option>
-      ))}
-    </select>
   );
 }
 
-function AppointmentFormFields({
-  title,
-  setTitle,
-  leadId,
-  setLeadId,
-  appointmentType,
-  setAppointmentType,
-  status,
-  setStatus,
-  assignedTo,
-  setAssignedTo,
-  currentUserId,
-  teamMembers,
-  leads,
-  startDate,
-  setStartDate,
-  startTime,
-  setStartTime,
-  endDate,
-  setEndDate,
-  endTime,
-  setEndTime,
-  notes,
-  setNotes,
-  errorMessage,
-}: {
-  title: string;
-  setTitle: (value: string) => void;
-  leadId: string;
-  setLeadId: (value: string) => void;
-  appointmentType: string;
-  setAppointmentType: (value: string) => void;
-  status: AppointmentStatus;
-  setStatus: (value: AppointmentStatus) => void;
-  assignedTo: string;
-  setAssignedTo: (value: string) => void;
-  currentUserId: string;
-  teamMembers: TeamMember[];
-  leads: Lead[];
-  startDate: string;
-  setStartDate: (value: string) => void;
-  startTime: string;
-  setStartTime: (value: string) => void;
-  endDate: string;
-  setEndDate: (value: string) => void;
-  endTime: string;
-  setEndTime: (value: string) => void;
-  notes: string;
-  setNotes: (value: string) => void;
-  errorMessage: string;
-}) {
+function isSameDay(
+  first: Date,
+  second: Date
+) {
   return (
-    <>
-      <div>
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Appointment Title
-        </label>
-
-        <input
-          value={title}
-          onChange={(event) =>
-            setTitle(event.target.value)
-          }
-          placeholder="e.g. Kitchen electrical estimate"
-          className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm font-medium outline-none placeholder:text-slate-400 focus:border-slate-400"
-        />
-      </div>
-
-      <div>
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Lead
-        </label>
-
-        <select
-          value={leadId}
-          onChange={(event) =>
-            setLeadId(event.target.value)
-          }
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium outline-none focus:border-slate-400"
-        >
-          <option value="">
-            No lead linked
-          </option>
-
-          {leads.map((lead) => (
-            <option
-              key={lead.id}
-              value={lead.id}
-            >
-              {getLeadName(lead)}
-              {lead.service_interest
-                ? ` — ${lead.service_interest}`
-                : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Appointment Type
-          </label>
-
-          <select
-            value={appointmentType}
-            onChange={(event) =>
-              setAppointmentType(
-                event.target.value
-              )
-            }
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium outline-none focus:border-slate-400"
-          >
-            {appointmentTypes.map(
-              (type) => (
-                <option
-                  key={type.value}
-                  value={type.value}
-                >
-                  {type.label}
-                </option>
-              )
-            )}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Status
-          </label>
-
-          <select
-            value={status}
-            onChange={(event) =>
-              setStatus(
-                event.target.value as AppointmentStatus
-              )
-            }
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium outline-none focus:border-slate-400"
-          >
-            {statusOptions.map(
-              (option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              )
-            )}
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Assigned To
-        </label>
-
-        <select
-          value={assignedTo}
-          onChange={(event) =>
-            setAssignedTo(event.target.value)
-          }
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium outline-none focus:border-slate-400"
-        >
-          {teamMembers.map((member) => (
-            <option
-              key={member.user_id}
-              value={member.user_id}
-            >
-              {member.user_id === currentUserId
-                ? "Me"
-                : `Team member ${member.user_id.slice(
-                    0,
-                    8
-                  )}`}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Start
-          </label>
-
-          {startDate && startTime && (
-            <span className="text-xs font-medium text-slate-400">
-              {formatTimeOption(startTime)}
-            </span>
-          )}
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
-          <DateSelect
-            value={startDate}
-            onChange={setStartDate}
-          />
-
-          <TimeSelect
-            value={startTime}
-            onChange={setStartTime}
-          />
-        </div>
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            End
-          </label>
-
-          {endDate && endTime && (
-            <span className="text-xs font-medium text-slate-400">
-              {formatTimeOption(endTime)}
-            </span>
-          )}
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
-          <DateSelect
-            value={endDate}
-            onChange={setEndDate}
-          />
-
-          <TimeSelect
-            value={endTime}
-            onChange={setEndTime}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Notes
-        </label>
-
-        <textarea
-          value={notes}
-          onChange={(event) =>
-            setNotes(event.target.value)
-          }
-          rows={4}
-          placeholder="Add any details your team should know..."
-          className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium outline-none placeholder:text-slate-400 focus:border-slate-400"
-        />
-      </div>
-
-      {errorMessage && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-          {errorMessage}
-        </div>
-      )}
-    </>
+    first.getFullYear() ===
+      second.getFullYear() &&
+    first.getMonth() ===
+      second.getMonth() &&
+    first.getDate() ===
+      second.getDate()
   );
+}
+
+function getInitialDate(
+  appointments: Appointment[]
+) {
+  if (appointments.length > 0) {
+    return new Date(
+      appointments[0].start_at
+    );
+  }
+
+  return new Date();
 }
 
 export default function AppointmentsClient({
@@ -714,15 +191,6 @@ export default function AppointmentsClient({
   currentUserId,
   organizationId,
 }: Props) {
-  const supabase = createClient();
-
-  /*
-   * Hydration protection.
-   *
-   * The calendar uses browser-local Date/Intl formatting.
-   * Rendering that during SSR can produce different markup
-   * between the server and browser.
-   */
   const [mounted, setMounted] =
     useState(false);
 
@@ -738,493 +206,223 @@ export default function AppointmentsClient({
   const [selectedAppointment, setSelectedAppointment] =
     useState<Appointment | null>(null);
 
-  const [showCreateModal, setShowCreateModal] =
-    useState(false);
-
-  const [showEditModal, setShowEditModal] =
-    useState(false);
-
-  const [view, setView] = useState<
-    "week" | "day"
-  >("week");
-
   const [currentDate, setCurrentDate] =
     useState<Date | null>(null);
 
-  useEffect(() => {
-    if (!mounted) return;
-
-    setCurrentDate(new Date());
-  }, [mounted]);
-
-  const [saving, setSaving] =
+  const [showCreateModal, setShowCreateModal] =
     useState(false);
 
   const [updating, setUpdating] =
     useState(false);
 
+  const [creating, setCreating] =
+    useState(false);
+
   const [errorMessage, setErrorMessage] =
     useState("");
 
-  const [title, setTitle] = useState("");
-  const [leadId, setLeadId] = useState("");
-  const [appointmentType, setAppointmentType] =
-    useState("service");
+  const [automationDiagnostic, setAutomationDiagnostic] =
+    useState<AutomationDiagnostic | null>(
+      null
+    );
 
-  const [status, setStatus] =
-    useState<AppointmentStatus>("scheduled");
+  const [view, setView] =
+    useState<"month" | "list">("month");
 
-  const [assignedTo, setAssignedTo] =
-    useState(currentUserId);
+  const [form, setForm] = useState({
+    lead_id: "",
+    title: "",
+    appointment_type: "",
+    start_at: "",
+    end_at: "",
+    notes: "",
+    assigned_to: "",
+  });
 
-  const [startDate, setStartDate] =
-    useState("");
-
-  const [startTime, setStartTime] =
-    useState("");
-
-  const [endDate, setEndDate] =
-    useState("");
-
-  const [endTime, setEndTime] =
-    useState("");
-
-  const [notes, setNotes] = useState("");
-
-  const safeCurrentDate =
-    currentDate ||
-    new Date(2000, 0, 1);
-
-  const today = mounted
-    ? new Date()
-    : new Date(2000, 0, 1);
-
-  const weekStart = useMemo(
-    () => getStartOfWeek(safeCurrentDate),
-    [safeCurrentDate]
-  );
-
-  const days = useMemo(() => {
-    if (view === "day") {
-      return [new Date(safeCurrentDate)];
+  useEffect(() => {
+    if (!mounted) {
+      return;
     }
 
-    return Array.from(
-      { length: 7 },
-      (_, index) => {
-        const date = new Date(weekStart);
-
-        date.setDate(
-          date.getDate() + index
-        );
-
-        return date;
-      }
+    setCurrentDate(
+      getInitialDate(initialAppointments)
     );
-  }, [
-    safeCurrentDate,
-    view,
-    weekStart,
-  ]);
+  }, [mounted, initialAppointments]);
 
-  const dayAppointments = useMemo(() => {
-    return appointments.filter(
-      (appointment) => {
-        const appointmentDate = new Date(
-          appointment.start_at
-        );
+  const calendarDays = useMemo(() => {
+    if (!currentDate) {
+      return [];
+    }
 
-        if (view === "day") {
-          return (
-            appointmentDate.getFullYear() ===
-              safeCurrentDate.getFullYear() &&
-            appointmentDate.getMonth() ===
-              safeCurrentDate.getMonth() &&
-            appointmentDate.getDate() ===
-              safeCurrentDate.getDate()
-          );
-        }
+    return getCalendarDays(currentDate);
+  }, [currentDate]);
 
-        const weekEnd = new Date(
-          weekStart
-        );
+  const monthAppointments = useMemo(() => {
+    if (!currentDate) {
+      return [];
+    }
 
-        weekEnd.setDate(
-          weekEnd.getDate() + 7
-        );
+    return appointments.filter((appointment) => {
+      const date = new Date(
+        appointment.start_at
+      );
 
-        return (
-          appointmentDate >= weekStart &&
-          appointmentDate < weekEnd
-        );
-      }
+      return (
+        date.getFullYear() ===
+          currentDate.getFullYear() &&
+        date.getMonth() ===
+          currentDate.getMonth()
+      );
+    });
+  }, [appointments, currentDate]);
+
+  const sortedAppointments = useMemo(() => {
+    return [...appointments].sort(
+      (a, b) =>
+        new Date(a.start_at).getTime() -
+        new Date(b.start_at).getTime()
     );
-  }, [
-    appointments,
-    safeCurrentDate,
-    view,
-    weekStart,
-  ]);
+  }, [appointments]);
 
-  function resetForm() {
-    const now = new Date();
+  function getLead(
+    leadId: string | null
+  ) {
+    if (!leadId) {
+      return null;
+    }
 
-    now.setMinutes(
-      Math.ceil(
-        now.getMinutes() / 15
-      ) * 15
+    return (
+      leads.find(
+        (lead) => lead.id === leadId
+      ) || null
     );
-
-    now.setSeconds(0);
-    now.setMilliseconds(0);
-
-    const end = new Date(now);
-    end.setMinutes(
-      end.getMinutes() + 60
-    );
-
-    const startDateParts =
-      getDateParts(now);
-
-    const startTimeParts =
-      getTimeParts(now);
-
-    const endDateParts =
-      getDateParts(end);
-
-    const endTimeParts =
-      getTimeParts(end);
-
-    setTitle("");
-    setLeadId("");
-    setAppointmentType("service");
-    setStatus("scheduled");
-    setAssignedTo(currentUserId);
-
-    setStartDate(
-      `${startDateParts.year}-${pad(
-        startDateParts.month
-      )}-${pad(startDateParts.day)}`
-    );
-
-    setStartTime(
-      `${pad(startTimeParts.hour)}:${pad(
-        startTimeParts.minute
-      )}`
-    );
-
-    setEndDate(
-      `${endDateParts.year}-${pad(
-        endDateParts.month
-      )}-${pad(endDateParts.day)}`
-    );
-
-    setEndTime(
-      `${pad(endTimeParts.hour)}:${pad(
-        endTimeParts.minute
-      )}`
-    );
-
-    setNotes("");
-    setErrorMessage("");
   }
 
-  function loadAppointmentIntoForm(
+  function getCustomerName(
     appointment: Appointment
   ) {
-    const start = new Date(
-      appointment.start_at
+    const lead = getLead(
+      appointment.lead_id
     );
 
-    const end = appointment.end_at
-      ? new Date(appointment.end_at)
-      : new Date(
-          start.getTime() +
-            60 * 60 * 1000
-        );
+    if (!lead) {
+      return "Unknown customer";
+    }
 
-    const startDateParts =
-      getDateParts(start);
+    const name = [
+      lead.first_name,
+      lead.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
 
-    const startTimeParts =
-      getTimeParts(start);
-
-    const endDateParts =
-      getDateParts(end);
-
-    const endTimeParts =
-      getTimeParts(end);
-
-    setTitle(appointment.title);
-    setLeadId(
-      appointment.lead_id || ""
-    );
-
-    setAppointmentType(
-      appointment.appointment_type
-    );
-
-    setStatus(appointment.status);
-
-    setAssignedTo(
-      appointment.assigned_to ||
-        currentUserId
-    );
-
-    setStartDate(
-      `${startDateParts.year}-${pad(
-        startDateParts.month
-      )}-${pad(startDateParts.day)}`
-    );
-
-    setStartTime(
-      `${pad(startTimeParts.hour)}:${pad(
-        startTimeParts.minute
-      )}`
-    );
-
-    setEndDate(
-      `${endDateParts.year}-${pad(
-        endDateParts.month
-      )}-${pad(endDateParts.day)}`
-    );
-
-    setEndTime(
-      `${pad(endTimeParts.hour)}:${pad(
-        endTimeParts.minute
-      )}`
-    );
-
-    setNotes(
-      appointment.notes || ""
-    );
-
-    setErrorMessage("");
+    return name || "Unnamed customer";
   }
 
-  function openCreateModal() {
-    resetForm();
+  function openCreateModal(
+    date?: Date
+  ) {
+    const baseDate =
+      date || new Date();
+
+    const start = new Date(
+      baseDate.getFullYear(),
+      baseDate.getMonth(),
+      baseDate.getDate(),
+      9,
+      0
+    );
+
+    const end = new Date(
+      baseDate.getFullYear(),
+      baseDate.getMonth(),
+      baseDate.getDate(),
+      10,
+      0
+    );
+
+    const toInputValue = (
+      value: Date
+    ) => {
+      const year =
+        value.getFullYear();
+
+      const month = String(
+        value.getMonth() + 1
+      ).padStart(2, "0");
+
+      const day = String(
+        value.getDate()
+      ).padStart(2, "0");
+
+      const hours = String(
+        value.getHours()
+      ).padStart(2, "0");
+
+      const minutes = String(
+        value.getMinutes()
+      ).padStart(2, "0");
+
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
+    setForm({
+      lead_id: "",
+      title: "",
+      appointment_type: "",
+      start_at: toInputValue(start),
+      end_at: toInputValue(end),
+      notes: "",
+      assigned_to: "",
+    });
+
+    setErrorMessage("");
+    setAutomationDiagnostic(null);
     setShowCreateModal(true);
   }
 
-  function openEditModal() {
-    if (!selectedAppointment) return;
-
-    loadAppointmentIntoForm(
-      selectedAppointment
-    );
-
-    setErrorMessage("");
-    setShowEditModal(true);
-  }
-
-  function moveCalendar(
-    direction: number
-  ) {
-    const next = new Date(
-      safeCurrentDate
-    );
-
-    if (view === "day") {
-      next.setDate(
-        next.getDate() + direction
-      );
-    } else {
-      next.setDate(
-        next.getDate() +
-          direction * 7
-      );
-    }
-
-    setCurrentDate(next);
-  }
-
-  function goToday() {
-    setCurrentDate(new Date());
-  }
-
-  function isSameDay(
-    date1: Date,
-    date2: Date
-  ) {
-    return (
-      date1.getFullYear() ===
-        date2.getFullYear() &&
-      date1.getMonth() ===
-        date2.getMonth() &&
-      date1.getDate() ===
-        date2.getDate()
-    );
-  }
-
-  function getAppointmentsForDay(
-    date: Date
-  ) {
-    return dayAppointments.filter(
-      (appointment) =>
-        isSameDay(
-          new Date(
-            appointment.start_at
-          ),
-          date
-        )
-    );
-  }
-
-  function getAppointmentPosition(
-    appointment: Appointment
-  ) {
-    const start = new Date(
-      appointment.start_at
-    );
-
-    const startMinutes =
-      start.getHours() * 60 +
-      start.getMinutes();
-
-    const top =
-      ((startMinutes - 7 * 60) /
-        15) *
-      20;
-
-    let duration = 60;
-
-    if (appointment.end_at) {
-      const end = new Date(
-        appointment.end_at
-      );
-
-      duration = Math.max(
-        15,
-        (end.getTime() -
-          start.getTime()) /
-          60000
-      );
-    }
-
-    const height =
-      (duration / 15) * 20;
-
-    return {
-      top,
-      height,
-    };
-  }
-
-  async function handleCreateAppointment(
-    event: FormEvent<HTMLFormElement>
+  async function createAppointment(
+    event: FormEvent
   ) {
     event.preventDefault();
 
+    setCreating(true);
     setErrorMessage("");
 
-    if (!title.trim()) {
-      setErrorMessage(
-        "Please enter an appointment title."
-      );
-      return;
-    }
-
-    const start =
-      createDateFromParts(
-        startDate,
-        startTime
-      );
-
-    const end =
-      createDateFromParts(
-        endDate,
-        endTime
-      );
-
-    if (!start) {
-      setErrorMessage(
-        "Please choose a valid start date and time."
-      );
-      return;
-    }
-
-    if (!end) {
-      setErrorMessage(
-        "Please choose a valid end date and time."
-      );
-      return;
-    }
-
-    if (end <= start) {
-      setErrorMessage(
-        "The end time must be after the start time."
-      );
-      return;
-    }
-
-    const hasConflict =
-      appointments.some(
-        (appointment) => {
-          if (
-            appointment.status ===
-              "cancelled" ||
-            !appointment.start_at
-          ) {
-            return false;
-          }
-
-          const existingStart =
-            new Date(
-              appointment.start_at
-            );
-
-          const existingEnd =
-            appointment.end_at
-              ? new Date(
-                  appointment.end_at
-                )
-              : new Date(
-                  existingStart.getTime() +
-                    60 * 60 * 1000
-                );
-
-          return (
-            start < existingEnd &&
-            end > existingStart
-          );
-        }
-      );
-
-    if (hasConflict) {
-      const confirmed =
-        window.confirm(
-          "This appointment overlaps another appointment. Create it anyway?"
-        );
-
-      if (!confirmed) return;
-    }
-
-    setSaving(true);
-
-    const { data, error } =
-      await supabase
-        .from("appointments")
-        .insert({
-          organization_id:
-            organizationId,
-          lead_id:
-            leadId || null,
-          assigned_to:
-            assignedTo || null,
-          title: title.trim(),
-          appointment_type:
-            appointmentType,
-          status,
-          start_at:
-            start.toISOString(),
-          end_at:
-            end.toISOString(),
-          notes:
-            notes.trim() || null,
-        })
-        .select(
-          `
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("appointments")
+      .insert({
+        organization_id:
+          organizationId,
+        lead_id:
+          form.lead_id || null,
+        assigned_to:
+          form.assigned_to || null,
+        title:
+          form.title.trim() ||
+          "Appointment",
+        appointment_type:
+          form.appointment_type.trim() ||
+          null,
+        status: "scheduled",
+        start_at:
+          new Date(
+            form.start_at
+          ).toISOString(),
+        end_at: form.end_at
+          ? new Date(
+              form.end_at
+            ).toISOString()
+          : null,
+        notes:
+          form.notes.trim() || null,
+      })
+      .select(
+        `
           id,
           organization_id,
           lead_id,
@@ -1238,8 +436,8 @@ export default function AppointmentsClient({
           created_at,
           updated_at
         `
-        )
-        .single();
+      )
+      .single();
 
     if (error) {
       console.error(
@@ -1252,14 +450,17 @@ export default function AppointmentsClient({
           "Unable to create appointment."
       );
 
-      setSaving(false);
+      setCreating(false);
       return;
     }
 
     if (data) {
       setAppointments(
         (current) =>
-          [...current, data].sort(
+          [
+            ...current,
+            data,
+          ].sort(
             (a, b) =>
               new Date(
                 a.start_at
@@ -1273,8 +474,8 @@ export default function AppointmentsClient({
       setSelectedAppointment(data);
     }
 
-    setSaving(false);
     setShowCreateModal(false);
+    setCreating(false);
   }
 
   async function updateAppointment(
@@ -1287,20 +488,22 @@ export default function AppointmentsClient({
     setUpdating(true);
     setErrorMessage("");
 
-    const { data, error } =
-      await supabase
-        .from("appointments")
-        .update({
-          ...updates,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          selectedAppointment.id
-        )
-        .select(
-          `
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("appointments")
+      .update({
+        ...updates,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        selectedAppointment.id
+      )
+      .select(
+        `
           id,
           organization_id,
           lead_id,
@@ -1314,8 +517,8 @@ export default function AppointmentsClient({
           created_at,
           updated_at
         `
-        )
-        .single();
+      )
+      .single();
 
     if (error) {
       console.error(
@@ -1364,7 +567,44 @@ export default function AppointmentsClient({
     nextStatus: AppointmentStatus
   ) {
     if (!selectedAppointment) {
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          "No-show automation stopped: no appointment is selected.",
+      });
+
       return;
+    }
+
+    /*
+     * IMPORTANT DIAGNOSTIC
+     *
+     * We intentionally track every step of the no-show
+     * automation so we can identify exactly where it breaks.
+     */
+
+    if (nextStatus === "no_show") {
+      setAutomationDiagnostic({
+        type: "info",
+        message:
+          "No-show automation: STARTED — preparing appointment update.",
+      });
+
+      console.log(
+        "NO-SHOW DIAGNOSTIC — START",
+        {
+          appointment_id:
+            selectedAppointment.id,
+          organization_id:
+            selectedAppointment.organization_id,
+          lead_id:
+            selectedAppointment.lead_id,
+          current_status:
+            selectedAppointment.status,
+        }
+      );
+    } else {
+      setAutomationDiagnostic(null);
     }
 
     const appointmentBeforeUpdate =
@@ -1376,17 +616,38 @@ export default function AppointmentsClient({
       });
 
     if (!updated) {
+      if (
+        nextStatus === "no_show"
+      ) {
+        setAutomationDiagnostic({
+          type: "error",
+          message:
+            "No-show automation stopped: the appointment status update failed. Check the error above.",
+        });
+      }
+
       return;
     }
 
-    /*
-     * Only trigger the automation when the
-     * appointment is specifically marked
-     * as a no-show.
-     */
     if (nextStatus !== "no_show") {
       return;
     }
+
+    setAutomationDiagnostic({
+      type: "info",
+      message:
+        "No-show automation: appointment successfully marked No Show. Creating automation event...",
+    });
+
+    console.log(
+      "NO-SHOW DIAGNOSTIC — APPOINTMENT UPDATED",
+      {
+        appointment_id:
+          appointmentBeforeUpdate.id,
+        organization_id:
+          appointmentBeforeUpdate.organization_id,
+      }
+    );
 
     const lead =
       appointmentBeforeUpdate.lead_id
@@ -1404,6 +665,66 @@ export default function AppointmentsClient({
       .filter(Boolean)
       .join(" ")
       .trim();
+
+    /*
+     * STEP 1:
+     * Insert automation event into Supabase.
+     */
+
+    setAutomationDiagnostic({
+      type: "info",
+      message:
+        "No-show automation: INSERTING automation_events row into Supabase...",
+    });
+
+    console.log(
+      "NO-SHOW DIAGNOSTIC — BEFORE INSERT",
+      {
+        organization_id:
+          appointmentBeforeUpdate.organization_id,
+        event_type:
+          "appointment_no_show",
+        appointment_id:
+          appointmentBeforeUpdate.id,
+        lead_id:
+          appointmentBeforeUpdate.lead_id,
+        payload: {
+          appointment: {
+            appointment_id:
+              appointmentBeforeUpdate.id,
+            organization_id:
+              appointmentBeforeUpdate.organization_id,
+            lead_id:
+              appointmentBeforeUpdate.lead_id,
+            title:
+              appointmentBeforeUpdate.title,
+            appointment_type:
+              appointmentBeforeUpdate.appointment_type,
+            status: "no_show",
+            start_at:
+              appointmentBeforeUpdate.start_at,
+            end_at:
+              appointmentBeforeUpdate.end_at,
+            notes:
+              appointmentBeforeUpdate.notes,
+          },
+          lead: {
+            lead_id:
+              lead?.id ||
+              appointmentBeforeUpdate.lead_id ||
+              null,
+            customer_name:
+              customerName || "there",
+            customer_phone:
+              lead?.phone || "",
+            customer_email:
+              lead?.email || "",
+            service_interest:
+              lead?.service_interest || "",
+          },
+        },
+      }
+    );
 
     const {
       data: automationEvent,
@@ -1487,992 +808,841 @@ export default function AppointmentsClient({
       .select("id")
       .single();
 
+    /*
+     * CRITICAL:
+     * If this fails, the problem is Supabase/RLS/schema,
+     * NOT n8n.
+     */
+
     if (error) {
+      const details =
+        getErrorDetails(error);
+
       console.error(
-        "Create no-show automation event error:",
-        error
-      );
-
-      setErrorMessage(
-        `Appointment marked as no-show, but automation event failed: ${error.message}`
-      );
-
-      return;
-    }
-
-    console.log(
-      "No-show automation event created:",
-      automationEvent.id
-    );
-
-    const dispatchResponse =
-      await fetch(
-        "/api/automation/events",
+        "NO-SHOW DIAGNOSTIC — INSERT FAILED",
         {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            event_id:
-              automationEvent.id,
-
-            organization_id:
-              appointmentBeforeUpdate.organization_id,
-          }),
+          error,
+          details,
         }
       );
 
-    if (!dispatchResponse.ok) {
-      const dispatchText =
-        await dispatchResponse.text();
-
-      console.error(
-        "No-show automation dispatch failed:",
-        dispatchText
-      );
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          `No-show automation: SUPABASE INSERT FAILED → ${details || "Unknown Supabase error."}`,
+      });
 
       setErrorMessage(
-        `Appointment marked as no-show, but automation dispatch failed: ${dispatchText}`
+        `Appointment marked as no-show, but automation event failed: ${
+          details ||
+          error.message ||
+          "Unknown Supabase error."
+        }`
       );
 
       return;
     }
 
+    if (!automationEvent?.id) {
+      console.error(
+        "NO-SHOW DIAGNOSTIC — INSERT RETURNED NO EVENT ID",
+        automationEvent
+      );
+
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          "No-show automation: Supabase insert returned successfully, but no automation event ID was returned.",
+      });
+
+      setErrorMessage(
+        "Appointment marked as no-show, but no automation event ID was returned."
+      );
+
+      return;
+    }
+
+    /*
+     * STEP 2:
+     * Supabase event was created successfully.
+     */
+
+    setAutomationDiagnostic({
+      type: "success",
+      message:
+        `No-show automation: SUCCESS — automation event created (${automationEvent.id}). Dispatching to n8n...`,
+    });
+
     console.log(
-      "No-show automation dispatched successfully:",
-      automationEvent.id
+      "NO-SHOW DIAGNOSTIC — EVENT CREATED",
+      {
+        event_id:
+          automationEvent.id,
+        organization_id:
+          appointmentBeforeUpdate.organization_id,
+        appointment_id:
+          appointmentBeforeUpdate.id,
+      }
+    );
+
+    /*
+     * STEP 3:
+     * Dispatch the automation event through the
+     * Trackpr API route.
+     */
+
+    setAutomationDiagnostic({
+      type: "info",
+      message:
+        `No-show automation: event ${automationEvent.id} created. Calling /api/automation/events...`,
+    });
+
+    let dispatchResponse: Response;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          "/api/automation/events",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              event_id:
+                automationEvent.id,
+
+              organization_id:
+                appointmentBeforeUpdate.organization_id,
+            }),
+          }
+        );
+    } catch (dispatchError: any) {
+      const message =
+        dispatchError?.message ||
+        String(dispatchError);
+
+      console.error(
+        "NO-SHOW DIAGNOSTIC — FETCH ERROR",
+        dispatchError
+      );
+
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          `No-show automation: NETWORK/FETCH ERROR → ${message}`,
+      });
+
+      setErrorMessage(
+        `Appointment marked as no-show and event was created, but dispatch failed: ${message}`
+      );
+
+      return;
+    }
+
+    const dispatchText =
+      await dispatchResponse.text();
+
+    console.log(
+      "NO-SHOW DIAGNOSTIC — DISPATCH RESPONSE",
+      {
+        status:
+          dispatchResponse.status,
+        statusText:
+          dispatchResponse.statusText,
+        body:
+          dispatchText,
+      }
+    );
+
+    /*
+     * CRITICAL:
+     * If this fails, Supabase worked.
+     * The issue is the Trackpr API route, auth,
+     * environment variable, or n8n connection.
+     */
+
+    if (!dispatchResponse.ok) {
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          `No-show automation: DISPATCH FAILED → HTTP ${dispatchResponse.status} ${dispatchResponse.statusText}. Response: ${
+            dispatchText ||
+            "No response body."
+          }`,
+      });
+
+      setErrorMessage(
+        `Appointment marked as no-show and automation event was created, but automation dispatch failed: ${
+          dispatchText ||
+          `HTTP ${dispatchResponse.status}`
+        }`
+      );
+
+      return;
+    }
+
+    /*
+     * STEP 4:
+     * Everything through Trackpr dispatch succeeded.
+     */
+
+    setAutomationDiagnostic({
+      type: "success",
+      message:
+        `No-show automation: FULL DISPATCH SUCCESS — event ${automationEvent.id} was sent to the automation system.`,
+    });
+
+    console.log(
+      "NO-SHOW DIAGNOSTIC — FULL SUCCESS",
+      {
+        event_id:
+          automationEvent.id,
+        appointment_id:
+          appointmentBeforeUpdate.id,
+        organization_id:
+          appointmentBeforeUpdate.organization_id,
+        dispatch_status:
+          dispatchResponse.status,
+        dispatch_response:
+          dispatchText,
+      }
     );
   }
 
-  async function handleEditAppointment(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
+  async function deleteAppointment() {
     if (!selectedAppointment) {
       return;
     }
 
-    setErrorMessage("");
-
-    if (!title.trim()) {
-      setErrorMessage(
-        "Please enter an appointment title."
+    const confirmed =
+      window.confirm(
+        "Delete this appointment?"
       );
+
+    if (!confirmed) {
       return;
-    }
-
-    const start =
-      createDateFromParts(
-        startDate,
-        startTime
-      );
-
-    const end =
-      createDateFromParts(
-        endDate,
-        endTime
-      );
-
-    if (!start || !end) {
-      setErrorMessage(
-        "Please choose valid dates and times."
-      );
-      return;
-    }
-
-    if (end <= start) {
-      setErrorMessage(
-        "The end time must be after the start time."
-      );
-      return;
-    }
-
-    const hasConflict =
-      appointments.some(
-        (appointment) => {
-          if (
-            appointment.id ===
-              selectedAppointment.id ||
-            appointment.status ===
-              "cancelled"
-          ) {
-            return false;
-          }
-
-          const existingStart =
-            new Date(
-              appointment.start_at
-            );
-
-          const existingEnd =
-            appointment.end_at
-              ? new Date(
-                  appointment.end_at
-                )
-              : new Date(
-                  existingStart.getTime() +
-                    60 * 60 * 1000
-                );
-
-          return (
-            start < existingEnd &&
-            end > existingStart
-          );
-        }
-      );
-
-    if (hasConflict) {
-      const confirmed =
-        window.confirm(
-          "This appointment overlaps another appointment. Save it anyway?"
-        );
-
-      if (!confirmed) return;
     }
 
     setUpdating(true);
+    setErrorMessage("");
+    setAutomationDiagnostic(null);
 
-    const { data, error } =
-      await supabase
-        .from("appointments")
-        .update({
-          lead_id:
-            leadId || null,
-          assigned_to:
-            assignedTo || null,
-          title: title.trim(),
-          appointment_type:
-            appointmentType,
-          status,
-          start_at:
-            start.toISOString(),
-          end_at:
-            end.toISOString(),
-          notes:
-            notes.trim() || null,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          selectedAppointment.id
-        )
-        .select(
-          `
-          id,
-          organization_id,
-          lead_id,
-          assigned_to,
-          title,
-          appointment_type,
-          status,
-          start_at,
-          end_at,
-          notes,
-          created_at,
-          updated_at
-        `
-        )
-        .single();
+    const {
+      error,
+    } = await supabase
+      .from("appointments")
+      .delete()
+      .eq(
+        "id",
+        selectedAppointment.id
+      );
 
     if (error) {
       console.error(
-        "Edit appointment error:",
+        "Delete appointment error:",
         error
       );
 
       setErrorMessage(
         error.message ||
-          "Unable to save appointment."
+          "Unable to delete appointment."
       );
 
       setUpdating(false);
       return;
     }
 
-    if (data) {
-      setAppointments(
-        (current) =>
-          current
-            .map((appointment) =>
-              appointment.id === data.id
-                ? data
-                : appointment
-            )
-            .sort(
-              (a, b) =>
-                new Date(
-                  a.start_at
-                ).getTime() -
-                new Date(
-                  b.start_at
-                ).getTime()
-            )
-      );
+    setAppointments(
+      (current) =>
+        current.filter(
+          (appointment) =>
+            appointment.id !==
+            selectedAppointment.id
+        )
+    );
 
-      setSelectedAppointment(data);
-    }
-
+    setSelectedAppointment(null);
     setUpdating(false);
-    setShowEditModal(false);
   }
 
-  const selectedLead =
-    selectedAppointment?.lead_id
-      ? leads.find(
-          (lead) =>
-            lead.id ===
-            selectedAppointment.lead_id
-        ) || null
-      : null;
+  function changeMonth(
+    amount: number
+  ) {
+    if (!currentDate) {
+      return;
+    }
 
-  const calendarStartHour = 7;
-  const calendarEndHour = 23;
-  const rowHeight = 80;
+    setCurrentDate(
+      new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth() +
+          amount,
+        1
+      )
+    );
+  }
 
-  const timeRows = Array.from(
-    {
-      length:
-        calendarEndHour -
-        calendarStartHour,
-    },
-    (_, index) =>
-      calendarStartHour + index
-  );
+  function goToToday() {
+    setCurrentDate(
+      new Date()
+    );
+  }
 
-  /*
-   * IMPORTANT:
-   * The initial server render and initial browser
-   * render both stop here with the same deterministic
-   * loading shell.
-   *
-   * Once mounted, the real calendar renders.
-   */
+  function handleCalendarAppointmentClick(
+    appointment: Appointment
+  ) {
+    setSelectedAppointment(
+      appointment
+    );
+
+    setErrorMessage("");
+    setAutomationDiagnostic(null);
+  }
+
   if (!mounted || !currentDate) {
     return (
-      <div className="min-h-screen bg-[#f7f8fa] text-slate-900">
-        <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-
-                <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Schedule
-                </span>
-              </div>
-
-              <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-                Appointments
-              </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Manage estimates, service calls,
-                consultations, and your team&apos;s
-                schedule.
-              </p>
-            </div>
-
-            <div className="h-11 w-44 animate-pulse rounded-xl bg-slate-200" />
-          </div>
-
-          <div className="mb-4 h-16 animate-pulse rounded-2xl border border-slate-200 bg-white shadow-sm" />
-
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="h-[900px] animate-pulse bg-slate-50" />
-          </div>
+      <div className="min-h-[720px] rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="animate-pulse space-y-6">
+          <div className="h-10 w-64 rounded-xl bg-slate-100" />
+          <div className="h-[620px] rounded-2xl bg-slate-50" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] text-slate-900">
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-blue-600">
+            Calendar
+          </p>
 
-              <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                Schedule
-              </span>
-            </div>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">
+            Appointments
+          </h1>
 
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Appointments
-            </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            Schedule, manage, and track every customer appointment.
+          </p>
+        </div>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Manage estimates, service calls,
-              consultations, and your team&apos;s
-              schedule.
-            </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={goToToday}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            Today
+          </button>
+
+          <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <button
+              type="button"
+              onClick={() =>
+                setView("month")
+              }
+              className={`px-4 text-sm font-bold transition ${
+                view === "month"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Month
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setView("list")
+              }
+              className={`px-4 text-sm font-bold transition ${
+                view === "list"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              List
+            </button>
           </div>
 
           <button
-            onClick={openCreateModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+            type="button"
+            onClick={() =>
+              openCreateModal()
+            }
+            className="h-11 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
           >
-            <span className="text-lg leading-none">
-              +
-            </span>
-
-            New Appointment
+            + New Appointment
           </button>
         </div>
+      </div>
 
-        <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goToday}
-                className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Today
-              </button>
+      {/* Error */}
+      {errorMessage && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {errorMessage}
+        </div>
+      )}
 
-              <button
-                onClick={() =>
-                  moveCalendar(-1)
-                }
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
-              >
-                ←
-              </button>
+      {/* Main calendar */}
+      {view === "month" ? (
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          {/* Calendar toolbar */}
+          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+            <div>
+              <h2 className="text-xl font-black text-slate-950">
+                {new Intl.DateTimeFormat(
+                  "en-US",
+                  {
+                    month: "long",
+                    year: "numeric",
+                  }
+                ).format(currentDate)}
+              </h2>
 
-              <button
-                onClick={() =>
-                  moveCalendar(1)
-                }
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
-              >
-                →
-              </button>
-
-              <div className="ml-1 text-sm font-bold text-slate-900">
-                {view === "day"
-                  ? currentDate.toLocaleDateString(
-                      [],
-                      {
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                      }
-                    )
-                  : `${formatShortDate(
-                      days[0]
-                    )} – ${formatShortDate(
-                      days[days.length - 1]
-                    )}`}
-              </div>
+              <p className="mt-1 text-xs font-medium text-slate-400">
+                {monthAppointments.length} appointment
+                {monthAppointments.length === 1
+                  ? ""
+                  : "s"} this month
+              </p>
             </div>
 
-            <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() =>
-                  setView("week")
+                  changeMonth(-1)
                 }
-                className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                  view === "week"
-                    ? "bg-white text-slate-950 shadow-sm"
-                    : "text-slate-500"
-                }`}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-bold text-slate-600 transition hover:bg-slate-50"
               >
-                Week
+                ‹
               </button>
 
               <button
+                type="button"
                 onClick={() =>
-                  setView("day")
+                  changeMonth(1)
                 }
-                className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                  view === "day"
-                    ? "bg-white text-slate-950 shadow-sm"
-                    : "text-slate-500"
-                }`}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-bold text-slate-600 transition hover:bg-slate-50"
               >
-                Day
+                ›
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <div className="min-w-[850px]">
+          {/* Week labels */}
+          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70">
+            {[
+              "Sun",
+              "Mon",
+              "Tue",
+              "Wed",
+              "Thu",
+              "Fri",
+              "Sat",
+            ].map((day) => (
               <div
-                className="grid border-b border-slate-200"
-                style={{
-                  gridTemplateColumns: `72px repeat(${days.length}, minmax(0, 1fr))`,
-                }}
+                key={day}
+                className="border-r border-slate-200 px-2 py-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-400 last:border-r-0"
               >
-                <div className="border-r border-slate-200 bg-slate-50" />
+                {day}
+              </div>
+            ))}
+          </div>
 
-                {days.map((day) => {
-                  const isToday =
-                    isSameDay(
-                      day,
-                      today
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7">
+            {calendarDays.map(
+              (day, index) => {
+                const dayAppointments =
+                  appointments
+                    .filter(
+                      (appointment) =>
+                        isSameDay(
+                          new Date(
+                            appointment.start_at
+                          ),
+                          day
+                        )
+                    )
+                    .sort(
+                      (a, b) =>
+                        new Date(
+                          a.start_at
+                        ).getTime() -
+                        new Date(
+                          b.start_at
+                        ).getTime()
                     );
 
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={`border-r border-slate-200 px-3 py-4 text-center last:border-r-0 ${
-                        isToday
-                          ? "bg-slate-50"
-                          : ""
-                      }`}
-                    >
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        {day.toLocaleDateString(
-                          [],
-                          {
-                            weekday: "short",
-                          }
-                        )}
-                      </div>
+                const isCurrentMonth =
+                  day.getMonth() ===
+                    currentDate.getMonth() &&
+                  day.getFullYear() ===
+                    currentDate.getFullYear();
 
-                      <div
-                        className={`mt-1 text-xl font-bold ${
+                const isToday =
+                  isSameDay(
+                    day,
+                    new Date()
+                  );
+
+                return (
+                  <div
+                    key={`${day.toISOString()}-${index}`}
+                    className={`min-h-[125px] border-b border-r border-slate-200 p-2 transition hover:bg-slate-50/70 ${
+                      !isCurrentMonth
+                        ? "bg-slate-50/40"
+                        : "bg-white"
+                    }`}
+                    onDoubleClick={() =>
+                      openCreateModal(day)
+                    }
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span
+                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
                           isToday
-                            ? "text-emerald-600"
-                            : "text-slate-900"
+                            ? "bg-blue-600 text-white"
+                            : isCurrentMonth
+                            ? "text-slate-700"
+                            : "text-slate-300"
                         }`}
                       >
                         {day.getDate()}
-                      </div>
+                      </span>
+
+                      {dayAppointments.length >
+                        0 && (
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {dayAppointments.length}
+                        </span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
 
-              <div className="relative">
-                <div
-                  className="grid"
-                  style={{
-                    gridTemplateColumns: `72px repeat(${days.length}, minmax(0, 1fr))`,
-                  }}
-                >
-                  <div className="border-r border-slate-200 bg-slate-50">
-                    {timeRows.map(
-                      (hour) => (
-                        <div
-                          key={hour}
-                          className="relative border-b border-slate-100"
-                          style={{
-                            height:
-                              rowHeight,
-                          }}
-                        >
-                          <span className="absolute -top-2 right-3 text-[11px] font-medium text-slate-400">
-                            {new Date(
-                              2000,
-                              0,
-                              1,
-                              hour
-                            ).toLocaleTimeString(
-                              [],
-                              {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              }
-                            )}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  {days.map((day) => {
-                    const appointmentsForDay =
-                      getAppointmentsForDay(
-                        day
-                      );
-
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className="relative border-r border-slate-100 last:border-r-0"
-                      >
-                        {timeRows.map(
-                          (hour) => (
-                            <div
-                              key={hour}
-                              className="border-b border-slate-100"
-                              style={{
-                                height:
-                                  rowHeight,
-                              }}
-                            />
-                          )
-                        )}
-
-                        {appointmentsForDay.map(
+                    <div className="space-y-1">
+                      {dayAppointments
+                        .slice(0, 3)
+                        .map(
                           (
                             appointment
-                          ) => {
-                            const position =
-                              getAppointmentPosition(
-                                appointment
-                              );
-
-                            const lead =
-                              appointment.lead_id
-                                ? leads.find(
-                                    (
-                                      item
-                                    ) =>
-                                      item.id ===
-                                      appointment.lead_id
-                                  )
-                                : null;
-
-                            return (
-                              <button
-                                key={
-                                  appointment.id
-                                }
-                                onClick={() =>
-                                  setSelectedAppointment(
-                                    appointment
-                                  )
-                                }
-                                className={`absolute left-1 right-1 overflow-hidden rounded-xl border p-2 text-left shadow-sm transition hover:z-10 hover:shadow-md ${getAppointmentBlockClasses(
-                                  appointment.status
-                                )}`}
-                                style={{
-                                  top: position.top,
-                                  height:
-                                    Math.max(
-                                      52,
-                                      position.height
-                                    ),
-                                }}
-                              >
-                                <div className="truncate text-xs font-bold">
-                                  {
-                                    appointment.title
-                                  }
-                                </div>
-
-                                <div className="mt-0.5 truncate text-[11px] font-medium opacity-70">
+                          ) => (
+                            <button
+                              key={
+                                appointment.id
+                              }
+                              type="button"
+                              onClick={() =>
+                                handleCalendarAppointmentClick(
+                                  appointment
+                                )
+                              }
+                              className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-black text-blue-600">
                                   {formatTime(
                                     appointment.start_at
                                   )}
+                                </span>
 
-                                  {appointment.end_at
-                                    ? ` – ${formatTime(
-                                        appointment.end_at
-                                      )}`
-                                    : ""}
-                                </div>
-
-                                {lead && (
-                                  <div className="mt-1 truncate text-[11px] font-semibold opacity-70">
-                                    {getLeadName(
-                                      lead
-                                    )}
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          }
+                                <span className="truncate text-[10px] font-bold text-slate-700">
+                                  {getCustomerName(
+                                    appointment
+                                  )}
+                                </span>
+                              </div>
+                            </button>
+                          )
                         )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+
+                      {dayAppointments.length >
+                        3 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setView("list");
+                          }}
+                          className="w-full px-2 py-1 text-left text-[10px] font-bold text-blue-600"
+                        >
+                          +
+                          {dayAppointments.length -
+                            3}{" "}
+                          more
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            )}
           </div>
         </div>
-
-        {appointments.length ===
-          0 && (
-          <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
-              📅
-            </div>
-
-            <h3 className="mt-3 text-sm font-bold text-slate-900">
-              No appointments yet
-            </h3>
+      ) : (
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-5 lg:px-6">
+            <h2 className="text-xl font-black text-slate-950">
+              All Appointments
+            </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Create your first appointment
-              to start building your schedule.
+              Manage upcoming and previous appointments.
             </p>
-
-            <button
-              onClick={openCreateModal}
-              className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white"
-            >
-              Create Appointment
-            </button>
           </div>
-        )}
-      </div>
 
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-950">
-                  New Appointment
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Add an appointment to your
-                  schedule.
-                </p>
+          {sortedAppointments.length ===
+          0 ? (
+            <div className="px-6 py-20 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+                📅
               </div>
+
+              <h3 className="mt-4 text-lg font-black text-slate-950">
+                No appointments yet
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+                Create your first appointment to start managing your schedule.
+              </p>
 
               <button
+                type="button"
                 onClick={() =>
-                  setShowCreateModal(false)
+                  openCreateModal()
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"
+                className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white"
               >
-                ×
+                Create Appointment
               </button>
             </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {sortedAppointments.map(
+                (appointment) => (
+                  <button
+                    key={appointment.id}
+                    type="button"
+                    onClick={() =>
+                      handleCalendarAppointmentClick(
+                        appointment
+                      )
+                    }
+                    className="flex w-full flex-col gap-4 px-5 py-5 text-left transition hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between lg:px-6"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusStyles[appointment.status]}`}
+                        >
+                          {
+                            statusLabels[
+                              appointment.status
+                            ]
+                          }
+                        </span>
 
-            <form
-              onSubmit={handleCreateAppointment}
-              className="space-y-6 p-6"
-            >
-              <AppointmentFormFields
-                title={title}
-                setTitle={setTitle}
-                leadId={leadId}
-                setLeadId={setLeadId}
-                appointmentType={
-                  appointmentType
-                }
-                setAppointmentType={
-                  setAppointmentType
-                }
-                status={status}
-                setStatus={setStatus}
-                assignedTo={assignedTo}
-                setAssignedTo={setAssignedTo}
-                currentUserId={currentUserId}
-                teamMembers={teamMembers}
-                leads={leads}
-                startDate={startDate}
-                setStartDate={setStartDate}
-                startTime={startTime}
-                setStartTime={setStartTime}
-                endDate={endDate}
-                setEndDate={setEndDate}
-                endTime={endTime}
-                setEndTime={setEndTime}
-                notes={notes}
-                setNotes={setNotes}
-                errorMessage={errorMessage}
-              />
+                        <span className="text-xs font-bold text-slate-400">
+                          {formatDateTime(
+                            appointment.start_at
+                          )}
+                        </span>
+                      </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowCreateModal(false)
-                  }
-                  className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
+                      <h3 className="mt-2 truncate text-base font-black text-slate-950">
+                        {getCustomerName(
+                          appointment
+                        )}
+                      </h3>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="h-11 rounded-xl bg-slate-950 px-6 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {saving
-                    ? "Creating..."
-                    : "Create Appointment"}
-                </button>
-              </div>
-            </form>
-          </div>
+                      <p className="mt-1 truncate text-sm font-medium text-slate-500">
+                        {appointment.title}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 text-sm font-bold text-blue-600">
+                      View appointment →
+                    </div>
+                  </button>
+                )
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {showEditModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-950">
-                  Edit Appointment
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Update the appointment details.
-                </p>
-              </div>
-
-              <button
-                onClick={() =>
-                  setShowEditModal(false)
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"
-              >
-                ×
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleEditAppointment}
-              className="space-y-6 p-6"
-            >
-              <AppointmentFormFields
-                title={title}
-                setTitle={setTitle}
-                leadId={leadId}
-                setLeadId={setLeadId}
-                appointmentType={
-                  appointmentType
-                }
-                setAppointmentType={
-                  setAppointmentType
-                }
-                status={status}
-                setStatus={setStatus}
-                assignedTo={assignedTo}
-                setAssignedTo={setAssignedTo}
-                currentUserId={currentUserId}
-                teamMembers={teamMembers}
-                leads={leads}
-                startDate={startDate}
-                setStartDate={setStartDate}
-                startTime={startTime}
-                setStartTime={setStartTime}
-                endDate={endDate}
-                setEndDate={setEndDate}
-                endTime={endTime}
-                setEndTime={setEndTime}
-                notes={notes}
-                setNotes={setNotes}
-                errorMessage={errorMessage}
-              />
-
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowEditModal(false)
-                  }
-                  className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="h-11 rounded-xl bg-slate-950 px-6 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {updating
-                    ? "Saving..."
-                    : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* Selected appointment panel */}
       {selectedAppointment && (
-        <div className="fixed inset-0 z-40">
-          <button
-            aria-label="Close appointment details"
-            onClick={() =>
-              setSelectedAppointment(null)
-            }
-            className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
-          />
-
-          <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Appointment
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  {
-                    selectedAppointment.title
-                  }
-                </h2>
-              </div>
-
-              <button
-                onClick={() =>
-                  setSelectedAppointment(null)
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-6 p-6">
-              <div className="flex flex-wrap gap-2">
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-start lg:justify-between lg:px-6">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold capitalize ${getStatusClasses(
-                    selectedAppointment.status
-                  )}`}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusStyles[selectedAppointment.status]}`}
                 >
-                  {selectedAppointment.status.replace(
-                    "_",
-                    " "
+                  {
+                    statusLabels[
+                      selectedAppointment.status
+                    ]
+                  }
+                </span>
+
+                <span className="text-xs font-bold text-slate-400">
+                  {formatDateTime(
+                    selectedAppointment.start_at
                   )}
                 </span>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Date & Time
-                </div>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">
+                {getCustomerName(
+                  selectedAppointment
+                )}
+              </h2>
 
-                <div className="mt-2 text-sm font-bold text-slate-900">
-                  {formatDate(
-                    selectedAppointment.start_at
-                  )}
-                </div>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {selectedAppointment.title}
+              </p>
+            </div>
 
-                <div className="mt-1 text-sm text-slate-500">
-                  {formatTime(
-                    selectedAppointment.start_at
-                  )}
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedAppointment(null)
+              }
+              className="self-start rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
 
-                  {selectedAppointment.end_at
-                    ? ` – ${formatTime(
-                        selectedAppointment.end_at
-                      )}`
-                    : ""}
-                </div>
-              </div>
+          <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1fr_360px] lg:px-6">
+            {/* Details */}
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Customer
+                  </p>
 
-              {selectedLead && (
-                <div>
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Lead
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="font-bold text-slate-900">
-                      {getLeadName(
-                        selectedLead
-                      )}
-                    </div>
-
-                    {selectedLead.service_interest && (
-                      <div className="mt-1 text-sm text-slate-500">
-                        {
-                          selectedLead.service_interest
-                        }
-                      </div>
+                  <p className="mt-2 text-sm font-black text-slate-900">
+                    {getCustomerName(
+                      selectedAppointment
                     )}
-
-                    {selectedLead.phone && (
-                      <div className="mt-3 text-sm text-slate-600">
-                        {selectedLead.phone}
-                      </div>
-                    )}
-
-                    {selectedLead.email && (
-                      <div className="mt-1 break-all text-sm text-slate-600">
-                        {selectedLead.email}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Appointment Type
+                  </p>
                 </div>
 
-                <div className="text-sm font-semibold capitalize text-slate-800">
-                  {selectedAppointment.appointment_type.replace(
-                    "_",
-                    " "
-                  )}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Appointment
+                  </p>
+
+                  <p className="mt-2 text-sm font-black text-slate-900">
+                    {selectedAppointment.title}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Type
+                  </p>
+
+                  <p className="mt-2 text-sm font-black text-slate-900">
+                    {selectedAppointment.appointment_type ||
+                      "General appointment"}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Time
+                  </p>
+
+                  <p className="mt-2 text-sm font-black text-slate-900">
+                    {formatDateTime(
+                      selectedAppointment.start_at
+                    )}
+                  </p>
                 </div>
               </div>
 
               {selectedAppointment.notes && (
-                <div>
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                     Notes
-                  </div>
+                  </p>
 
-                  <div className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                    {
-                      selectedAppointment.notes
-                    }
-                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {selectedAppointment.notes}
+                  </p>
                 </div>
               )}
 
-              <div className="space-y-3 border-t border-slate-200 pt-5">
-                <button
-                  type="button"
-                  onClick={openEditModal}
-                  className="h-11 w-full rounded-xl bg-slate-950 text-sm font-bold text-white transition hover:bg-slate-800"
-                >
-                  Edit / Reschedule
-                </button>
+              {/* Status actions */}
+              <div>
+                <p className="mb-3 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Appointment Status
+                </p>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {selectedAppointment.status !==
-                    "completed" && (
-                    <button
-                      type="button"
-                      disabled={updating}
-                      onClick={() =>
-                        handleStatusChange(
-                          "completed"
-                        )
-                      }
-                      className="h-11 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
-                    >
-                      {updating
-                        ? "Updating..."
-                        : "Complete"}
-                    </button>
-                  )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={() =>
+                      handleStatusChange(
+                        "scheduled"
+                      )
+                    }
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Scheduled
+                  </button>
 
-                  {selectedAppointment.status !==
-                    "no_show" && (
-                    <button
-                      type="button"
-                      disabled={updating}
-                      onClick={() =>
-                        handleStatusChange(
-                          "no_show"
-                        )
-                      }
-                      className="h-11 rounded-xl border border-amber-200 bg-amber-50 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
-                    >
-                      No Show
-                    </button>
-                  )}
-                </div>
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={() =>
+                      handleStatusChange(
+                        "confirmed"
+                      )
+                    }
+                    className="h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
+                  >
+                    Confirmed
+                  </button>
 
-                {selectedAppointment.status !==
-                  "cancelled" && (
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={() =>
+                      handleStatusChange(
+                        "completed"
+                      )
+                    }
+                    className="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
+                  >
+                    Completed
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={() =>
+                      handleStatusChange(
+                        "no_show"
+                      )
+                    }
+                    className="h-11 rounded-xl border border-amber-200 bg-amber-50 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    No Show
+                  </button>
+
                   <button
                     type="button"
                     disabled={updating}
@@ -2481,20 +1651,420 @@ export default function AppointmentsClient({
                         "cancelled"
                       )
                     }
-                    className="h-11 w-full rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                    className="h-11 rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
                   >
-                    Cancel Appointment
+                    Cancelled
                   </button>
-                )}
-
-                {errorMessage && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                    {errorMessage}
-                  </div>
-                )}
+                </div>
               </div>
+
+              {/* Diagnostic */}
+              {automationDiagnostic && (
+                <div
+                  className={`rounded-2xl border px-4 py-4 ${
+                    automationDiagnostic.type ===
+                    "success"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : automationDiagnostic.type ===
+                        "error"
+                      ? "border-rose-200 bg-rose-50"
+                      : "border-amber-200 bg-amber-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
+                        automationDiagnostic.type ===
+                        "success"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : automationDiagnostic.type ===
+                            "error"
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {automationDiagnostic.type ===
+                      "success"
+                        ? "✓"
+                        : automationDiagnostic.type ===
+                          "error"
+                        ? "!"
+                        : "…"}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p
+                        className={`text-[10px] font-black uppercase tracking-wider ${
+                          automationDiagnostic.type ===
+                          "success"
+                            ? "text-emerald-700"
+                            : automationDiagnostic.type ===
+                              "error"
+                            ? "text-rose-700"
+                            : "text-amber-700"
+                        }`}
+                      >
+                        Automation Diagnostic
+                      </p>
+
+                      <p
+                        className={`mt-1 break-words text-sm font-semibold leading-6 ${
+                          automationDiagnostic.type ===
+                          "success"
+                            ? "text-emerald-800"
+                            : automationDiagnostic.type ===
+                              "error"
+                            ? "text-rose-800"
+                            : "text-amber-800"
+                        }`}
+                      >
+                        {
+                          automationDiagnostic.message
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </aside>
+
+            {/* Customer / actions */}
+            <div className="space-y-4">
+              {(() => {
+                const lead =
+                  getLead(
+                    selectedAppointment.lead_id
+                  );
+
+                if (!lead) {
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        Customer
+                      </p>
+
+                      <p className="mt-2 text-sm font-bold text-slate-500">
+                        No linked lead.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Customer Contact
+                    </p>
+
+                    <p className="mt-2 text-base font-black text-slate-950">
+                      {getCustomerName(
+                        selectedAppointment
+                      )}
+                    </p>
+
+                    {lead.phone && (
+                      <p className="mt-2 text-sm font-medium text-slate-600">
+                        {lead.phone}
+                      </p>
+                    )}
+
+                    {lead.email && (
+                      <p className="mt-1 break-all text-sm font-medium text-slate-600">
+                        {lead.email}
+                      </p>
+                    )}
+
+                    {lead.service_interest && (
+                      <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-500">
+                        Interested in:{" "}
+                        <span className="text-slate-800">
+                          {
+                            lead.service_interest
+                          }
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <button
+                type="button"
+                disabled={updating}
+                onClick={
+                  deleteAppointment
+                }
+                className="h-11 w-full rounded-xl border border-rose-200 bg-white text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
+              >
+                Delete Appointment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">
+                  New Appointment
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Create an appointment for a customer.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowCreateModal(false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              onSubmit={
+                createAppointment
+              }
+              className="space-y-5 p-6"
+            >
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Customer
+                </label>
+
+                <select
+                  value={form.lead_id}
+                  onChange={(event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+                        lead_id:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                >
+                  <option value="">
+                    Select customer
+                  </option>
+
+                  {leads.map((lead) => (
+                    <option
+                      key={lead.id}
+                      value={lead.id}
+                    >
+                      {[
+                        lead.first_name,
+                        lead.last_name,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") ||
+                        "Unnamed customer"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Title
+                </label>
+
+                <input
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+                        title:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  placeholder="Estimate appointment"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Appointment Type
+                </label>
+
+                <input
+                  value={
+                    form.appointment_type
+                  }
+                  onChange={(event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+                        appointment_type:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  placeholder="Estimate, consultation, service call..."
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Start
+                  </label>
+
+                  <input
+                    type="datetime-local"
+                    required
+                    value={
+                      form.start_at
+                    }
+                    onChange={(event) =>
+                      setForm(
+                        (current) => ({
+                          ...current,
+                          start_at:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    End
+                  </label>
+
+                  <input
+                    type="datetime-local"
+                    value={
+                      form.end_at
+                    }
+                    onChange={(event) =>
+                      setForm(
+                        (current) => ({
+                          ...current,
+                          end_at:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Assigned To
+                </label>
+
+                <select
+                  value={
+                    form.assigned_to
+                  }
+                  onChange={(event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+                        assigned_to:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                >
+                  <option value="">
+                    Unassigned
+                  </option>
+
+                  {teamMembers.map(
+                    (member) => (
+                      <option
+                        key={
+                          member.user_id
+                        }
+                        value={
+                          member.user_id
+                        }
+                      >
+                        {member.user_id ===
+                        currentUserId
+                          ? "You"
+                          : member.user_id}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Notes
+                </label>
+
+                <textarea
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+                        notes:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  rows={4}
+                  placeholder="Appointment notes..."
+                  className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowCreateModal(
+                      false
+                    )
+                  }
+                  className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="h-11 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {creating
+                    ? "Creating..."
+                    : "Create Appointment"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
