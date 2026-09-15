@@ -29,6 +29,7 @@ import {
   UserRound,
   Building2,
   Check,
+  CalendarCheck2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -98,6 +99,11 @@ const navSections: NavSection[] = [
         label: "Calendar",
         href: "/calendar",
         icon: CalendarDays,
+      },
+      {
+        label: "Appointments",
+        href: "/appointments",
+        icon: CalendarCheck2,
       },
     ],
   },
