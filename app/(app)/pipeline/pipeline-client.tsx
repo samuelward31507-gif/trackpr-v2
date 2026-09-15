@@ -57,8 +57,9 @@ const pipelineStages: {
 
 function getLeadName(lead: PipelineLead) {
   return (
-    [lead.first_name, lead.last_name].filter(Boolean).join(" ") ||
-    "Unnamed Lead"
+    [lead.first_name, lead.last_name]
+      .filter(Boolean)
+      .join(" ") || "Unnamed Lead"
   );
 }
 
@@ -128,11 +129,13 @@ export default function PipelineClient({
 
   const [updatingLeadId, setUpdatingLeadId] =
     useState<string | null>(null);
-const [draggedLead, setDraggedLead] =
-  useState<PipelineLead | null>(null);
 
-const [dragOverStage, setDragOverStage] =
-  useState<PipelineStage | null>(null);
+  const [draggedLead, setDraggedLead] =
+    useState<PipelineLead | null>(null);
+
+  const [dragOverStage, setDragOverStage] =
+    useState<PipelineStage | null>(null);
+
   const supabase = createClient();
 
   const stats = useMemo(() => {
@@ -150,7 +153,10 @@ const [dragOverStage, setDragOverStage] =
     const overdueFollowUps = leads.filter((lead) => {
       if (!lead.next_follow_up_at) return false;
 
-      return new Date(lead.next_follow_up_at) < new Date();
+      return (
+        new Date(lead.next_follow_up_at) <
+        new Date()
+      );
     });
 
     return {
@@ -182,12 +188,16 @@ const [dragOverStage, setDragOverStage] =
       )
     );
 
-    const { error: updateError } = await supabase
-      .from("leads")
-      .update({
-        status: newStatus,
-      })
-      .eq("id", lead.id);
+    /*
+     * Update the lead status.
+     */
+    const { error: updateError } =
+      await supabase
+        .from("leads")
+        .update({
+          status: newStatus,
+        })
+        .eq("id", lead.id);
 
     if (updateError) {
       console.error(
@@ -215,23 +225,34 @@ const [dragOverStage, setDragOverStage] =
       return;
     }
 
-    const { error: activityError } = await supabase
-      .from("lead_activities")
-      .insert({
-        lead_id: lead.id,
-        activity_type: "status_changed",
-        title: `Lead moved to ${
-          newStatus.charAt(0).toUpperCase() +
-          newStatus.slice(1)
-        }`,
-        description: `Status changed from ${
-          previousStatus.charAt(0).toUpperCase() +
-          previousStatus.slice(1)
-        } to ${
-          newStatus.charAt(0).toUpperCase() +
-          newStatus.slice(1)
-        } from the pipeline.`,
-      });
+    /*
+     * Record status-change activity.
+     */
+    const { error: activityError } =
+      await supabase
+        .from("lead_activities")
+        .insert({
+          lead_id: lead.id,
+          activity_type:
+            "status_changed",
+          title: `Lead moved to ${
+            newStatus
+              .charAt(0)
+              .toUpperCase() +
+            newStatus.slice(1)
+          }`,
+          description: `Status changed from ${
+            previousStatus
+              .charAt(0)
+              .toUpperCase() +
+            previousStatus.slice(1)
+          } to ${
+            newStatus
+              .charAt(0)
+              .toUpperCase() +
+            newStatus.slice(1)
+          } from the pipeline.`,
+        });
 
     if (activityError) {
       console.error(
@@ -240,39 +261,137 @@ const [dragOverStage, setDragOverStage] =
       );
     }
 
+    /*
+     * LOST LEAD REACTIVATION AUTOMATION
+     *
+     * Only trigger when a lead actually
+     * moves INTO the Lost stage.
+     */
+    if (
+      previousStatus !== "lost" &&
+      newStatus === "lost"
+    ) {
+      try {
+        console.log(
+          "LOST LEAD REACTIVATION STARTED FROM PIPELINE",
+          {
+            leadId: lead.id,
+            organizationId:
+              lead.organization_id,
+          }
+        );
+
+        const response =
+          await fetch(
+            "/api/automation/lost-lead",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                lead_id:
+                  lead.id,
+
+                organization_id:
+                  lead.organization_id,
+              }),
+            }
+          );
+
+        const responseText =
+          await response.text();
+
+        let responseData: any =
+          null;
+
+        try {
+          responseData =
+            responseText
+              ? JSON.parse(
+                  responseText
+                )
+              : null;
+        } catch {
+          responseData =
+            responseText;
+        }
+
+        console.log(
+          "LOST LEAD REACTIVATION RESPONSE FROM PIPELINE",
+          {
+            status:
+              response.status,
+
+            data:
+              responseData,
+          }
+        );
+
+        if (!response.ok) {
+          console.error(
+            "Lost lead reactivation failed from pipeline:",
+            responseData
+          );
+        } else {
+          console.log(
+            "Lost lead reactivation started successfully from pipeline:",
+            responseData
+          );
+        }
+      } catch (automationError) {
+        /*
+         * Do not undo the CRM status change
+         * if the automation request fails.
+         */
+        console.error(
+          "Lost lead reactivation request failed from pipeline:",
+          automationError
+        );
+      }
+    }
+
     setUpdatingLeadId(null);
   }
 
-  function handleDragStart(lead: PipelineLead) {
-  setDraggedLead(lead);
-}
+  function handleDragStart(
+    lead: PipelineLead
+  ) {
+    setDraggedLead(lead);
+  }
 
-function handleDragEnd() {
-  setDraggedLead(null);
-  setDragOverStage(null);
-}
+  function handleDragEnd() {
+    setDraggedLead(null);
+    setDragOverStage(null);
+  }
 
-function handleDragOver(
-  event: React.DragEvent<HTMLDivElement>,
-  stage: PipelineStage
-) {
-  event.preventDefault();
-  setDragOverStage(stage);
-}
+  function handleDragOver(
+    event: React.DragEvent<HTMLDivElement>,
+    stage: PipelineStage
+  ) {
+    event.preventDefault();
+    setDragOverStage(stage);
+  }
 
-async function handleDrop(
-  event: React.DragEvent<HTMLDivElement>,
-  stage: PipelineStage
-) {
-  event.preventDefault();
+  async function handleDrop(
+    event: React.DragEvent<HTMLDivElement>,
+    stage: PipelineStage
+  ) {
+    event.preventDefault();
 
-  if (!draggedLead) return;
+    if (!draggedLead) return;
 
-  await moveLead(draggedLead, stage);
+    await moveLead(
+      draggedLead,
+      stage
+    );
 
-  setDraggedLead(null);
-  setDragOverStage(null);
-}
+    setDraggedLead(null);
+    setDragOverStage(null);
+  }
 
   return (
     <div className="mx-auto max-w-[1600px]">
@@ -306,7 +425,9 @@ async function handleDrop(
           label="Total leads"
           value={stats.total}
           description="All opportunities in your CRM"
-          icon={<Users className="h-4 w-4 text-slate-400" />}
+          icon={
+            <Users className="h-4 w-4 text-slate-400" />
+          }
         />
 
         <StatCard
@@ -332,7 +453,9 @@ async function handleDrop(
           label="Follow-ups overdue"
           value={stats.overdue}
           description="Opportunities requiring attention"
-          attention={stats.overdue > 0}
+          attention={
+            stats.overdue > 0
+          }
           icon={
             <CalendarClock
               className={`h-4 w-4 ${
@@ -364,147 +487,179 @@ async function handleDrop(
 
         <div className="overflow-x-auto pb-4">
           <div className="grid min-w-[1350px] grid-cols-5 gap-4">
-            {pipelineStages.map((stage) => {
-              const stageLeads = leads.filter(
-                (lead) => lead.status === stage.id
-              );
+            {pipelineStages.map(
+              (stage) => {
+                const stageLeads =
+                  leads.filter(
+                    (lead) =>
+                      lead.status ===
+                      stage.id
+                  );
 
-              return (
-                <div
-  key={stage.id}
-  onDragOver={(event) =>
-    handleDragOver(event, stage.id)
-  }
-  onDragLeave={() => {
-    setDragOverStage(null);
-  }}
-  onDrop={(event) =>
-    handleDrop(event, stage.id)
-  }
-  className={`flex min-h-[600px] flex-col rounded-2xl border transition ${
-    dragOverStage === stage.id
-      ? "border-blue-400 bg-blue-50"
-      : "border-slate-200 bg-slate-50/70"
-  }`}
->
-                  <div className="border-b border-slate-200 bg-white px-4 py-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`h-2.5 w-2.5 rounded-full ${getStageAccent(
+                return (
+                  <div
+                    key={stage.id}
+                    onDragOver={(event) =>
+                      handleDragOver(
+                        event,
+                        stage.id
+                      )
+                    }
+                    onDragLeave={() => {
+                      setDragOverStage(
+                        null
+                      );
+                    }}
+                    onDrop={(event) =>
+                      handleDrop(
+                        event,
+                        stage.id
+                      )
+                    }
+                    className={`flex min-h-[600px] flex-col rounded-2xl border transition ${
+                      dragOverStage ===
+                      stage.id
+                        ? "border-blue-400 bg-blue-50"
+                        : "border-slate-200 bg-slate-50/70"
+                    }`}
+                  >
+                    <div className="border-b border-slate-200 bg-white px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-2.5 w-2.5 rounded-full ${getStageAccent(
+                              stage.id
+                            )}`}
+                          />
+
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            {stage.label}
+                          </h3>
+                        </div>
+
+                        <span
+                          className={`inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-semibold ${getStageBadge(
                             stage.id
                           )}`}
-                        />
-
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          {stage.label}
-                        </h3>
+                        >
+                          {
+                            stageLeads.length
+                          }
+                        </span>
                       </div>
 
-                      <span
-                        className={`inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-semibold ${getStageBadge(
-                          stage.id
-                        )}`}
-                      >
-                        {stageLeads.length}
-                      </span>
+                      <p className="mt-2 text-xs text-slate-400">
+                        {
+                          stage.description
+                        }
+                      </p>
                     </div>
 
-                    <p className="mt-2 text-xs text-slate-400">
-                      {stage.description}
-                    </p>
+                    <div className="flex-1 space-y-3 p-3">
+                      {stageLeads.length ===
+                      0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 px-4 py-8 text-center">
+                          <p className="text-xs text-slate-400">
+                            No leads in this stage
+                          </p>
+                        </div>
+                      ) : (
+                        stageLeads.map(
+                          (lead) => {
+                            const contact =
+                              lead.email ||
+                              lead.phone ||
+                              "No contact information";
+
+                            return (
+                              <div
+                                key={
+                                  lead.id
+                                }
+                                draggable
+                                onDragStart={() =>
+                                  handleDragStart(
+                                    lead
+                                  )
+                                }
+                                onDragEnd={
+                                  handleDragEnd
+                                }
+                                className={`cursor-grab rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md active:cursor-grabbing ${
+                                  draggedLead?.id ===
+                                  lead.id
+                                    ? "opacity-50"
+                                    : ""
+                                }`}
+                              >
+                                <Link
+                                  href={`/leads/${lead.id}`}
+                                  className="group block"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-xs font-bold text-white">
+                                      {getInitials(
+                                        lead
+                                      )}
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-blue-600">
+                                        {getLeadName(
+                                          lead
+                                        )}
+                                      </p>
+
+                                      <p className="mt-1 truncate text-xs text-slate-400">
+                                        {
+                                          contact
+                                        }
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                      Service
+                                    </p>
+
+                                    <p className="mt-1 truncate text-sm font-medium text-slate-600">
+                                      {lead.service_interest ||
+                                        "Not specified"}
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                      Source
+                                    </p>
+
+                                    <p className="mt-1 truncate text-sm text-slate-600">
+                                      {lead.source ||
+                                        "Not specified"}
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+                                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+
+                                    <p className="text-xs font-medium text-slate-500">
+                                      {formatFollowUp(
+                                        lead.next_follow_up_at
+                                      )}
+                                    </p>
+                                  </div>
+                                </Link>
+                              </div>
+                            );
+                          }
+                        )
+                      )}
+                    </div>
                   </div>
-
-                  <div className="flex-1 space-y-3 p-3">
-                    {stageLeads.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 px-4 py-8 text-center">
-                        <p className="text-xs text-slate-400">
-                          No leads in this stage
-                        </p>
-                      </div>
-                    ) : (
-                      stageLeads.map((lead) => {
-                        const contact =
-                          lead.email ||
-                          lead.phone ||
-                          "No contact information";
-
-                    
-
-                        return (
-                         <div
-  key={lead.id}
-  draggable
-  onDragStart={() => handleDragStart(lead)}
-  onDragEnd={handleDragEnd}
-  className={`cursor-grab rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md active:cursor-grabbing ${
-    draggedLead?.id === lead.id
-      ? "opacity-50"
-      : ""
-  }`}
->
-                            <Link
-                              href={`/leads/${lead.id}`}
-                              className="group block"
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-xs font-bold text-white">
-                                  {getInitials(lead)}
-                                </div>
-
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-blue-600">
-                                    {getLeadName(lead)}
-                                  </p>
-
-                                  <p className="mt-1 truncate text-xs text-slate-400">
-                                    {contact}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="mt-4">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                  Service
-                                </p>
-
-                                <p className="mt-1 truncate text-sm font-medium text-slate-600">
-                                  {lead.service_interest ||
-                                    "Not specified"}
-                                </p>
-                              </div>
-
-                              <div className="mt-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                  Source
-                                </p>
-
-                                <p className="mt-1 truncate text-sm text-slate-600">
-                                  {lead.source ||
-                                    "Not specified"}
-                                </p>
-                              </div>
-
-                              <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
-                                <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
-
-                                <p className="text-xs font-medium text-slate-500">
-                                  {formatFollowUp(
-                                    lead.next_follow_up_at
-                                  )}
-                                </p>
-                              </div>
-                            </Link>
-
-                            
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              }
+            )}
           </div>
         </div>
       </div>
@@ -568,7 +723,9 @@ function StatCard({
 
       <p
         className={`mt-4 text-3xl font-semibold tracking-tight ${
-          attention ? "text-red-600" : valueClassName
+          attention
+            ? "text-red-600"
+            : valueClassName
         }`}
       >
         {value}

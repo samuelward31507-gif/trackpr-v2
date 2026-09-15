@@ -4,6 +4,7 @@ import PipelineClient from "./pipeline-client";
 
 export type PipelineLead = {
   id: string;
+  organization_id: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -31,6 +32,7 @@ export default async function PipelinePage() {
     .select(
       `
         id,
+        organization_id,
         first_name,
         last_name,
         email,
@@ -42,11 +44,20 @@ export default async function PipelinePage() {
         created_at
       `
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: false,
+    });
 
   if (error) {
-    console.error("Error loading pipeline leads:", error);
+    console.error(
+      "Error loading pipeline leads:",
+      error
+    );
   }
 
-  return <PipelineClient initialLeads={leads || []} />;
+  return (
+    <PipelineClient
+      initialLeads={leads || []}
+    />
+  );
 }
