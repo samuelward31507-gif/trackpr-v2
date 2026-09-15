@@ -1313,17 +1313,185 @@ export default function AppointmentsClient({
     return true;
   }
 
-  async function handleStatusChange(
-    nextStatus: AppointmentStatus
-  ) {
-    if (!selectedAppointment) {
-      return;
-    }
+async function handleStatusChange(
+  nextStatus: AppointmentStatus
+) {
+  if (!selectedAppointment) {
+    return;
+  }
 
+  const appointmentBeforeUpdate =
+    selectedAppointment;
+
+  const updated =
     await updateAppointment({
       status: nextStatus,
     });
+
+  if (!updated) {
+    return;
   }
+
+  // Only trigger automation when an appointment
+  // is specifically marked as a no-show.
+  if (nextStatus !== "no_show") {
+    return;
+  }
+
+  const lead =
+    appointmentBeforeUpdate.lead_id
+      ? leads.find(
+          (item) =>
+            item.id ===
+            appointmentBeforeUpdate.lead_id
+        ) || null
+      : null;
+
+  const customerName = [
+    lead?.first_name,
+    lead?.last_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const {
+    data: automationEvent,
+    error,
+  } = await supabase
+    .from("automation_events")
+    .insert({
+      organization_id:
+        appointmentBeforeUpdate.organization_id,
+
+      event_type:
+        "appointment_no_show",
+
+      lead_id:
+        appointmentBeforeUpdate.lead_id,
+
+      contact_id: null,
+
+      appointment_id:
+        appointmentBeforeUpdate.id,
+
+      estimate_id: null,
+
+      job_id: null,
+
+      payment_id: null,
+
+      review_id: null,
+
+      payload: {
+        appointment: {
+          appointment_id:
+            appointmentBeforeUpdate.id,
+
+          organization_id:
+            appointmentBeforeUpdate.organization_id,
+
+          lead_id:
+            appointmentBeforeUpdate.lead_id,
+
+          title:
+            appointmentBeforeUpdate.title,
+
+          appointment_type:
+            appointmentBeforeUpdate.appointment_type,
+
+          status: "no_show",
+
+          start_at:
+            appointmentBeforeUpdate.start_at,
+
+          end_at:
+            appointmentBeforeUpdate.end_at,
+
+          notes:
+            appointmentBeforeUpdate.notes,
+        },
+
+        lead: {
+          lead_id:
+            lead?.id ||
+            appointmentBeforeUpdate.lead_id ||
+            null,
+
+          customer_name:
+            customerName || "there",
+
+          customer_phone:
+            lead?.phone || "",
+
+          customer_email:
+            lead?.email || "",
+
+          service_interest:
+            lead?.service_interest || "",
+        },
+      },
+
+      status: "pending",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error(
+      "Create no-show automation event error:",
+      error
+    );
+
+    setErrorMessage(
+      `Appointment marked as no-show, but automation event failed: ${error.message}`
+    );
+
+    return;
+  }
+
+  const dispatchResponse =
+    await fetch(
+      "/api/automation/events",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          event_id:
+            automationEvent.id,
+
+          organization_id:
+            appointmentBeforeUpdate.organization_id,
+        }),
+      }
+    );
+
+  if (!dispatchResponse.ok) {
+    const dispatchText =
+      await dispatchResponse.text();
+
+    console.error(
+      "No-show automation dispatch failed:",
+      dispatchText
+    );
+
+    setErrorMessage(
+      `Appointment marked as no-show, but automation dispatch failed: ${dispatchText}`
+    );
+
+    return;
+  }
+
+  console.log(
+    "No-show automation dispatched successfully:",
+    automationEvent.id
+  );
+}
 
   async function handleEditAppointment(
     event: FormEvent<HTMLFormElement>
