@@ -569,17 +569,13 @@ async function handleStatusChange(
   if (!selectedAppointment) {
     setAutomationDiagnostic({
       type: "error",
-      message:
-        "No-show automation failed: no appointment is selected.",
+      message: "No appointment is selected.",
     });
-
     return;
   }
 
-  const appointmentId =
-    selectedAppointment.id;
-
-  const appointmentOrganizationId =
+  const appointmentId = selectedAppointment.id;
+  const organizationId =
     selectedAppointment.organization_id;
 
   /*
@@ -596,237 +592,118 @@ async function handleStatusChange(
   }
 
   /*
-   * NO-SHOW AUTOMATION
+   * NO-SHOW
    *
-   * IMPORTANT:
-   * We capture the appointment ID BEFORE updating
-   * the appointment so the automation request
-   * always uses the original appointment.
+   * Show the diagnostic BEFORE doing anything else.
    */
-
   setAutomationDiagnostic({
     type: "info",
-    message:
-      "No-show automation: marking appointment as No Show...",
+    message: "No-show automation started...",
   });
 
   console.log(
-    "NO-SHOW AUTOMATION — START",
+    "NO-SHOW AUTOMATION STARTED",
     {
-      appointment_id: appointmentId,
-      organization_id:
-        appointmentOrganizationId,
-      lead_id:
-        selectedAppointment.lead_id,
-      current_status:
-        selectedAppointment.status,
+      appointmentId,
+      organizationId,
     }
   );
 
   /*
-   * STEP 1
    * Update appointment status.
    */
-
-  const updated =
-    await updateAppointment({
-      status: "no_show",
-    });
+  const updated = await updateAppointment({
+    status: "no_show",
+  });
 
   if (!updated) {
     setAutomationDiagnostic({
       type: "error",
       message:
-        "No-show automation failed: appointment could not be marked No Show.",
+        "Appointment could not be updated to No Show.",
     });
 
     return;
   }
 
   /*
-   * STEP 2
-   * Tell the user the appointment update succeeded.
+   * Tell the user the appointment was updated.
    */
-
   setAutomationDiagnostic({
     type: "info",
     message:
-      "Appointment marked No Show. Creating automation event...",
+      "Appointment marked No Show. Sending automation...",
   });
 
-  console.log(
-    "NO-SHOW AUTOMATION — APPOINTMENT UPDATED",
-    {
-      appointment_id:
-        appointmentId,
-      organization_id:
-        appointmentOrganizationId,
-    }
-  );
-
   /*
-   * STEP 3
-   * Call the secure server route.
-   *
-   * The server route is responsible for:
-   *
-   * - Authentication
-   * - Organization verification
-   * - Appointment lookup
-   * - Lead lookup
-   * - automation_events INSERT
-   * - n8n webhook dispatch
+   * Call the server automation route.
    */
-
-  let response: Response;
-
   try {
-    response =
-      await fetch(
-        "/api/automation/no-show",
-        {
-          method: "POST",
+    const response = await fetch(
+      "/api/automation/no-show",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          appointment_id: appointmentId,
+          organization_id: organizationId,
+        }),
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+    const text = await response.text();
 
-          body: JSON.stringify({
-            appointment_id:
-              appointmentId,
+    let data: any = null;
 
-            organization_id:
-              appointmentOrganizationId,
-          }),
-        }
-      );
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    console.log(
+      "NO-SHOW AUTOMATION RESPONSE",
+      {
+        status: response.status,
+        data,
+        text,
+      }
+    );
+
+    if (!response.ok) {
+      setAutomationDiagnostic({
+        type: "error",
+        message:
+          data?.details ||
+          data?.error ||
+          `Automation failed (HTTP ${response.status}).`,
+      });
+
+      return;
+    }
+
+    setAutomationDiagnostic({
+      type: "success",
+      message:
+        data?.n8n_status
+          ? `No-show automation successful. n8n responded with HTTP ${data.n8n_status}.`
+          : "No-show automation successful.",
+    });
   } catch (error: any) {
     console.error(
-      "NO-SHOW AUTOMATION — FETCH ERROR",
+      "NO-SHOW AUTOMATION FETCH ERROR",
       error
     );
 
-    const message =
-      error?.message ||
-      "Unable to reach the automation server.";
-
     setAutomationDiagnostic({
       type: "error",
       message:
-        `No-show automation failed: ${message}`,
+        error?.message ||
+        "Unable to reach the automation server.",
     });
-
-    setErrorMessage(
-      `Appointment was marked No Show, but the automation server could not be reached. ${message}`
-    );
-
-    return;
   }
-
-  /*
-   * STEP 4
-   * Read server response.
-   */
-
-  const responseText =
-    await response.text();
-
-  let responseData: any = null;
-
-  try {
-    responseData =
-      responseText
-        ? JSON.parse(responseText)
-        : null;
-  } catch {
-    responseData = null;
-  }
-
-  console.log(
-    "NO-SHOW AUTOMATION — SERVER RESPONSE",
-    {
-      status:
-        response.status,
-
-      body:
-        responseData ||
-        responseText,
-    }
-  );
-
-  /*
-   * STEP 5
-   * Server returned an error.
-   */
-
-  if (!response.ok) {
-    const serverError =
-      responseData?.error ||
-      responseText ||
-      `HTTP ${response.status}`;
-
-    const details =
-      responseData?.details
-        ? ` — ${responseData.details}`
-        : "";
-
-    setAutomationDiagnostic({
-      type: "error",
-      message:
-        `No-show automation failed: ${serverError}${details}`,
-    });
-
-    setErrorMessage(
-      `Appointment was marked No Show, but automation failed: ${serverError}${details}`
-    );
-
-    return;
-  }
-
-  /*
-   * STEP 6
-   * Everything succeeded.
-   */
-
-  const eventId =
-    responseData?.event_id ||
-    "unknown";
-
-  const n8nStatus =
-    responseData?.n8n_status;
-
-  setAutomationDiagnostic({
-    type: "success",
-    message:
-      `No-show automation successful. Event ${eventId} was created and sent to n8n${
-        n8nStatus
-          ? ` (HTTP ${n8nStatus})`
-          : ""
-      }.`,
-  });
-
-  setErrorMessage("");
-
-  console.log(
-    "NO-SHOW AUTOMATION — SUCCESS",
-    {
-      event_id:
-        eventId,
-
-      appointment_id:
-        appointmentId,
-
-      organization_id:
-        appointmentOrganizationId,
-
-      n8n_status:
-        n8nStatus,
-
-      n8n_response:
-        responseData?.n8n_response,
-    }
-  );
 }
 
   async function deleteAppointment() {
