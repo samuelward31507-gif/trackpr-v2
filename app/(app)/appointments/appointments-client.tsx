@@ -563,455 +563,236 @@ export default function AppointmentsClient({
     return true;
   }
 
-  async function handleStatusChange(
-    nextStatus: AppointmentStatus
-  ) {
-    if (!selectedAppointment) {
-      setAutomationDiagnostic({
-        type: "error",
-        message:
-          "No-show automation stopped: no appointment is selected.",
-      });
+async function handleStatusChange(
+  nextStatus: AppointmentStatus
+) {
+  if (!selectedAppointment) {
+    setAutomationDiagnostic({
+      type: "error",
+      message:
+        "No-show automation stopped: no appointment is selected.",
+    });
 
-      return;
-    }
+    return;
+  }
 
-    /*
-     * IMPORTANT DIAGNOSTIC
-     *
-     * We intentionally track every step of the no-show
-     * automation so we can identify exactly where it breaks.
-     */
+  if (nextStatus === "no_show") {
+    setAutomationDiagnostic({
+      type: "info",
+      message:
+        "No-show automation: marking appointment as No Show...",
+    });
 
+    console.log(
+      "NO-SHOW SERVER AUTOMATION — START",
+      {
+        appointment_id:
+          selectedAppointment.id,
+        organization_id:
+          selectedAppointment.organization_id,
+        lead_id:
+          selectedAppointment.lead_id,
+        current_status:
+          selectedAppointment.status,
+      }
+    );
+  } else {
+    setAutomationDiagnostic(null);
+  }
+
+  const updated =
+    await updateAppointment({
+      status: nextStatus,
+    });
+
+  if (!updated) {
     if (nextStatus === "no_show") {
       setAutomationDiagnostic({
-        type: "info",
-        message:
-          "No-show automation: STARTED — preparing appointment update.",
-      });
-
-      console.log(
-        "NO-SHOW DIAGNOSTIC — START",
-        {
-          appointment_id:
-            selectedAppointment.id,
-          organization_id:
-            selectedAppointment.organization_id,
-          lead_id:
-            selectedAppointment.lead_id,
-          current_status:
-            selectedAppointment.status,
-        }
-      );
-    } else {
-      setAutomationDiagnostic(null);
-    }
-
-    const appointmentBeforeUpdate =
-      selectedAppointment;
-
-    const updated =
-      await updateAppointment({
-        status: nextStatus,
-      });
-
-    if (!updated) {
-      if (
-        nextStatus === "no_show"
-      ) {
-        setAutomationDiagnostic({
-          type: "error",
-          message:
-            "No-show automation stopped: the appointment status update failed. Check the error above.",
-        });
-      }
-
-      return;
-    }
-
-    if (nextStatus !== "no_show") {
-      return;
-    }
-
-    setAutomationDiagnostic({
-      type: "info",
-      message:
-        "No-show automation: appointment successfully marked No Show. Creating automation event...",
-    });
-
-    console.log(
-      "NO-SHOW DIAGNOSTIC — APPOINTMENT UPDATED",
-      {
-        appointment_id:
-          appointmentBeforeUpdate.id,
-        organization_id:
-          appointmentBeforeUpdate.organization_id,
-      }
-    );
-
-    const lead =
-      appointmentBeforeUpdate.lead_id
-        ? leads.find(
-            (item) =>
-              item.id ===
-              appointmentBeforeUpdate.lead_id
-          ) || null
-        : null;
-
-    const customerName = [
-      lead?.first_name,
-      lead?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    /*
-     * STEP 1:
-     * Insert automation event into Supabase.
-     */
-
-    setAutomationDiagnostic({
-      type: "info",
-      message:
-        "No-show automation: INSERTING automation_events row into Supabase...",
-    });
-
-    console.log(
-      "NO-SHOW DIAGNOSTIC — BEFORE INSERT",
-      {
-        organization_id:
-          appointmentBeforeUpdate.organization_id,
-        event_type:
-          "appointment_no_show",
-        appointment_id:
-          appointmentBeforeUpdate.id,
-        lead_id:
-          appointmentBeforeUpdate.lead_id,
-        payload: {
-          appointment: {
-            appointment_id:
-              appointmentBeforeUpdate.id,
-            organization_id:
-              appointmentBeforeUpdate.organization_id,
-            lead_id:
-              appointmentBeforeUpdate.lead_id,
-            title:
-              appointmentBeforeUpdate.title,
-            appointment_type:
-              appointmentBeforeUpdate.appointment_type,
-            status: "no_show",
-            start_at:
-              appointmentBeforeUpdate.start_at,
-            end_at:
-              appointmentBeforeUpdate.end_at,
-            notes:
-              appointmentBeforeUpdate.notes,
-          },
-          lead: {
-            lead_id:
-              lead?.id ||
-              appointmentBeforeUpdate.lead_id ||
-              null,
-            customer_name:
-              customerName || "there",
-            customer_phone:
-              lead?.phone || "",
-            customer_email:
-              lead?.email || "",
-            service_interest:
-              lead?.service_interest || "",
-          },
-        },
-      }
-    );
-
-    const {
-      data: automationEvent,
-      error,
-    } = await supabase
-      .from("automation_events")
-      .insert({
-        organization_id:
-          appointmentBeforeUpdate.organization_id,
-
-        event_type:
-          "appointment_no_show",
-
-        lead_id:
-          appointmentBeforeUpdate.lead_id,
-
-        contact_id: null,
-
-        appointment_id:
-          appointmentBeforeUpdate.id,
-
-        estimate_id: null,
-
-        job_id: null,
-
-        payment_id: null,
-
-        review_id: null,
-
-        payload: {
-          appointment: {
-            appointment_id:
-              appointmentBeforeUpdate.id,
-
-            organization_id:
-              appointmentBeforeUpdate.organization_id,
-
-            lead_id:
-              appointmentBeforeUpdate.lead_id,
-
-            title:
-              appointmentBeforeUpdate.title,
-
-            appointment_type:
-              appointmentBeforeUpdate.appointment_type,
-
-            status: "no_show",
-
-            start_at:
-              appointmentBeforeUpdate.start_at,
-
-            end_at:
-              appointmentBeforeUpdate.end_at,
-
-            notes:
-              appointmentBeforeUpdate.notes,
-          },
-
-          lead: {
-            lead_id:
-              lead?.id ||
-              appointmentBeforeUpdate.lead_id ||
-              null,
-
-            customer_name:
-              customerName || "there",
-
-            customer_phone:
-              lead?.phone || "",
-
-            customer_email:
-              lead?.email || "",
-
-            service_interest:
-              lead?.service_interest || "",
-          },
-        },
-
-        status: "pending",
-      })
-      .select("id")
-      .single();
-
-    /*
-     * CRITICAL:
-     * If this fails, the problem is Supabase/RLS/schema,
-     * NOT n8n.
-     */
-
-    if (error) {
-      const details =
-        getErrorDetails(error);
-
-      console.error(
-        "NO-SHOW DIAGNOSTIC — INSERT FAILED",
-        {
-          error,
-          details,
-        }
-      );
-
-      setAutomationDiagnostic({
         type: "error",
         message:
-          `No-show automation: SUPABASE INSERT FAILED → ${details || "Unknown Supabase error."}`,
+          "No-show automation stopped: appointment status update failed.",
       });
-
-      setErrorMessage(
-        `Appointment marked as no-show, but automation event failed: ${
-          details ||
-          error.message ||
-          "Unknown Supabase error."
-        }`
-      );
-
-      return;
     }
 
-    if (!automationEvent?.id) {
-      console.error(
-        "NO-SHOW DIAGNOSTIC — INSERT RETURNED NO EVENT ID",
-        automationEvent
-      );
-
-      setAutomationDiagnostic({
-        type: "error",
-        message:
-          "No-show automation: Supabase insert returned successfully, but no automation event ID was returned.",
-      });
-
-      setErrorMessage(
-        "Appointment marked as no-show, but no automation event ID was returned."
-      );
-
-      return;
-    }
-
-    /*
-     * STEP 2:
-     * Supabase event was created successfully.
-     */
-
-    setAutomationDiagnostic({
-      type: "success",
-      message:
-        `No-show automation: SUCCESS — automation event created (${automationEvent.id}). Dispatching to n8n...`,
-    });
-
-    console.log(
-      "NO-SHOW DIAGNOSTIC — EVENT CREATED",
-      {
-        event_id:
-          automationEvent.id,
-        organization_id:
-          appointmentBeforeUpdate.organization_id,
-        appointment_id:
-          appointmentBeforeUpdate.id,
-      }
-    );
-
-    /*
-     * STEP 3:
-     * Dispatch the automation event through the
-     * Trackpr API route.
-     */
-
-    setAutomationDiagnostic({
-      type: "info",
-      message:
-        `No-show automation: event ${automationEvent.id} created. Calling /api/automation/events...`,
-    });
-
-    let dispatchResponse: Response;
-
-    try {
-      dispatchResponse =
-        await fetch(
-          "/api/automation/events",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              event_id:
-                automationEvent.id,
-
-              organization_id:
-                appointmentBeforeUpdate.organization_id,
-            }),
-          }
-        );
-    } catch (dispatchError: any) {
-      const message =
-        dispatchError?.message ||
-        String(dispatchError);
-
-      console.error(
-        "NO-SHOW DIAGNOSTIC — FETCH ERROR",
-        dispatchError
-      );
-
-      setAutomationDiagnostic({
-        type: "error",
-        message:
-          `No-show automation: NETWORK/FETCH ERROR → ${message}`,
-      });
-
-      setErrorMessage(
-        `Appointment marked as no-show and event was created, but dispatch failed: ${message}`
-      );
-
-      return;
-    }
-
-    const dispatchText =
-      await dispatchResponse.text();
-
-    console.log(
-      "NO-SHOW DIAGNOSTIC — DISPATCH RESPONSE",
-      {
-        status:
-          dispatchResponse.status,
-        statusText:
-          dispatchResponse.statusText,
-        body:
-          dispatchText,
-      }
-    );
-
-    /*
-     * CRITICAL:
-     * If this fails, Supabase worked.
-     * The issue is the Trackpr API route, auth,
-     * environment variable, or n8n connection.
-     */
-
-    if (!dispatchResponse.ok) {
-      setAutomationDiagnostic({
-        type: "error",
-        message:
-          `No-show automation: DISPATCH FAILED → HTTP ${dispatchResponse.status} ${dispatchResponse.statusText}. Response: ${
-            dispatchText ||
-            "No response body."
-          }`,
-      });
-
-      setErrorMessage(
-        `Appointment marked as no-show and automation event was created, but automation dispatch failed: ${
-          dispatchText ||
-          `HTTP ${dispatchResponse.status}`
-        }`
-      );
-
-      return;
-    }
-
-    /*
-     * STEP 4:
-     * Everything through Trackpr dispatch succeeded.
-     */
-
-    setAutomationDiagnostic({
-      type: "success",
-      message:
-        `No-show automation: FULL DISPATCH SUCCESS — event ${automationEvent.id} was sent to the automation system.`,
-    });
-
-    console.log(
-      "NO-SHOW DIAGNOSTIC — FULL SUCCESS",
-      {
-        event_id:
-          automationEvent.id,
-        appointment_id:
-          appointmentBeforeUpdate.id,
-        organization_id:
-          appointmentBeforeUpdate.organization_id,
-        dispatch_status:
-          dispatchResponse.status,
-        dispatch_response:
-          dispatchText,
-      }
-    );
+    return;
   }
+
+  if (nextStatus !== "no_show") {
+    return;
+  }
+
+  setAutomationDiagnostic({
+    type: "info",
+    message:
+      "No-show automation: appointment marked No Show. Sending event to Trackpr server...",
+  });
+
+  console.log(
+    "NO-SHOW SERVER AUTOMATION — APPOINTMENT UPDATED",
+    {
+      appointment_id:
+        selectedAppointment.id,
+      organization_id:
+        selectedAppointment.organization_id,
+    }
+  );
+
+  /*
+   * IMPORTANT:
+   *
+   * We intentionally DO NOT insert into
+   * automation_events from the browser anymore.
+   *
+   * The server route handles:
+   *
+   * 1. Authentication
+   * 2. Organization verification
+   * 3. Appointment lookup
+   * 4. Lead lookup
+   * 5. automation_events creation
+   * 6. n8n webhook dispatch
+   */
+
+  setAutomationDiagnostic({
+    type: "info",
+    message:
+      "No-show automation: calling /api/automation/no-show...",
+  });
+
+  let response: Response;
+
+  try {
+    response =
+      await fetch(
+        "/api/automation/no-show",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            appointment_id:
+              selectedAppointment.id,
+
+            organization_id:
+              selectedAppointment.organization_id,
+          }),
+        }
+      );
+  } catch (error: any) {
+    const message =
+      error?.message ||
+      String(error);
+
+    console.error(
+      "NO-SHOW SERVER AUTOMATION — FETCH ERROR",
+      error
+    );
+
+    setAutomationDiagnostic({
+      type: "error",
+      message:
+        `No-show automation: server request failed → ${message}`,
+    });
+
+    setErrorMessage(
+      `Appointment marked as No Show, but automation failed: ${message}`
+    );
+
+    return;
+  }
+
+  const responseText =
+    await response.text();
+
+  let responseData: any = null;
+
+  try {
+    responseData =
+      responseText
+        ? JSON.parse(responseText)
+        : null;
+  } catch {
+    responseData = null;
+  }
+
+  console.log(
+    "NO-SHOW SERVER AUTOMATION — RESPONSE",
+    {
+      status:
+        response.status,
+      statusText:
+        response.statusText,
+      body:
+        responseData ||
+        responseText,
+    }
+  );
+
+  if (!response.ok) {
+    const serverError =
+      responseData?.error ||
+      responseText ||
+      `HTTP ${response.status}`;
+
+    const details =
+      responseData?.details
+        ? ` ${responseData.details}`
+        : "";
+
+    setAutomationDiagnostic({
+      type: "error",
+      message:
+        `No-show automation failed → ${serverError}${details}`,
+    });
+
+    setErrorMessage(
+      `Appointment marked as No Show, but automation failed: ${serverError}${details}`
+    );
+
+    return;
+  }
+
+  const eventId =
+    responseData?.event_id ||
+    "unknown";
+
+  const n8nStatus =
+    responseData?.n8n_status;
+
+  setAutomationDiagnostic({
+    type: "success",
+    message:
+      `No-show automation SUCCESS — event ${eventId} was created and sent to n8n${
+        n8nStatus
+          ? ` (HTTP ${n8nStatus})`
+          : ""
+      }.`,
+  });
+
+  console.log(
+    "NO-SHOW SERVER AUTOMATION — FULL SUCCESS",
+    {
+      event_id:
+        eventId,
+
+      appointment_id:
+        selectedAppointment.id,
+
+      organization_id:
+        selectedAppointment.organization_id,
+
+      n8n_status:
+        n8nStatus,
+
+      n8n_response:
+        responseData?.n8n_response,
+    }
+  );
+}
 
   async function deleteAppointment() {
     if (!selectedAppointment) {
