@@ -1,6 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type AppointmentStatus =
@@ -252,15 +257,27 @@ function DateSelect({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
+  /*
+   * IMPORTANT:
+   * Do not use new Date() during the initial render here.
+   * The fallback date is deterministic so server and browser
+   * render the same markup.
+   */
+  const fallbackDate = new Date(
+    2000,
+    0,
+    1
+  );
+
+  const fallbackParts =
+    getDateParts(fallbackDate);
 
   const parts = value
     ? value.split("-").map(Number)
     : [
-        currentYear,
-        now.getMonth() + 1,
-        now.getDate(),
+        fallbackParts.year,
+        fallbackParts.month,
+        fallbackParts.day,
       ];
 
   const year = parts[0];
@@ -269,7 +286,7 @@ function DateSelect({
 
   const years = Array.from(
     { length: 11 },
-    (_, index) => currentYear - 2 + index
+    (_, index) => 1998 + index
   );
 
   const daysInMonth = new Date(
@@ -699,6 +716,20 @@ export default function AppointmentsClient({
 }: Props) {
   const supabase = createClient();
 
+  /*
+   * Hydration protection.
+   *
+   * The calendar uses browser-local Date/Intl formatting.
+   * Rendering that during SSR can produce different markup
+   * between the server and browser.
+   */
+  const [mounted, setMounted] =
+    useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [appointments, setAppointments] =
     useState<Appointment[]>(
       initialAppointments
@@ -718,7 +749,13 @@ export default function AppointmentsClient({
   >("week");
 
   const [currentDate, setCurrentDate] =
-    useState(new Date());
+    useState<Date | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    setCurrentDate(new Date());
+  }, [mounted]);
 
   const [saving, setSaving] =
     useState(false);
@@ -754,16 +791,22 @@ export default function AppointmentsClient({
 
   const [notes, setNotes] = useState("");
 
-  const today = new Date();
+  const safeCurrentDate =
+    currentDate ||
+    new Date(2000, 0, 1);
+
+  const today = mounted
+    ? new Date()
+    : new Date(2000, 0, 1);
 
   const weekStart = useMemo(
-    () => getStartOfWeek(currentDate),
-    [currentDate]
+    () => getStartOfWeek(safeCurrentDate),
+    [safeCurrentDate]
   );
 
   const days = useMemo(() => {
     if (view === "day") {
-      return [new Date(currentDate)];
+      return [new Date(safeCurrentDate)];
     }
 
     return Array.from(
@@ -778,7 +821,11 @@ export default function AppointmentsClient({
         return date;
       }
     );
-  }, [currentDate, view, weekStart]);
+  }, [
+    safeCurrentDate,
+    view,
+    weekStart,
+  ]);
 
   const dayAppointments = useMemo(() => {
     return appointments.filter(
@@ -790,11 +837,11 @@ export default function AppointmentsClient({
         if (view === "day") {
           return (
             appointmentDate.getFullYear() ===
-              currentDate.getFullYear() &&
+              safeCurrentDate.getFullYear() &&
             appointmentDate.getMonth() ===
-              currentDate.getMonth() &&
+              safeCurrentDate.getMonth() &&
             appointmentDate.getDate() ===
-              currentDate.getDate()
+              safeCurrentDate.getDate()
           );
         }
 
@@ -814,7 +861,7 @@ export default function AppointmentsClient({
     );
   }, [
     appointments,
-    currentDate,
+    safeCurrentDate,
     view,
     weekStart,
   ]);
@@ -975,7 +1022,7 @@ export default function AppointmentsClient({
     direction: number
   ) {
     const next = new Date(
-      currentDate
+      safeCurrentDate
     );
 
     if (view === "day") {
@@ -1313,185 +1360,193 @@ export default function AppointmentsClient({
     return true;
   }
 
-async function handleStatusChange(
-  nextStatus: AppointmentStatus
-) {
-  if (!selectedAppointment) {
-    return;
-  }
+  async function handleStatusChange(
+    nextStatus: AppointmentStatus
+  ) {
+    if (!selectedAppointment) {
+      return;
+    }
 
-  const appointmentBeforeUpdate =
-    selectedAppointment;
+    const appointmentBeforeUpdate =
+      selectedAppointment;
 
-  const updated =
-    await updateAppointment({
-      status: nextStatus,
-    });
+    const updated =
+      await updateAppointment({
+        status: nextStatus,
+      });
 
-  if (!updated) {
-    return;
-  }
+    if (!updated) {
+      return;
+    }
 
-  // Only trigger automation when an appointment
-  // is specifically marked as a no-show.
-  if (nextStatus !== "no_show") {
-    return;
-  }
+    /*
+     * Only trigger the automation when the
+     * appointment is specifically marked
+     * as a no-show.
+     */
+    if (nextStatus !== "no_show") {
+      return;
+    }
 
-  const lead =
-    appointmentBeforeUpdate.lead_id
-      ? leads.find(
-          (item) =>
-            item.id ===
-            appointmentBeforeUpdate.lead_id
-        ) || null
-      : null;
+    const lead =
+      appointmentBeforeUpdate.lead_id
+        ? leads.find(
+            (item) =>
+              item.id ===
+              appointmentBeforeUpdate.lead_id
+          ) || null
+        : null;
 
-  const customerName = [
-    lead?.first_name,
-    lead?.last_name,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+    const customerName = [
+      lead?.first_name,
+      lead?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
 
-  const {
-    data: automationEvent,
-    error,
-  } = await supabase
-    .from("automation_events")
-    .insert({
-      organization_id:
-        appointmentBeforeUpdate.organization_id,
+    const {
+      data: automationEvent,
+      error,
+    } = await supabase
+      .from("automation_events")
+      .insert({
+        organization_id:
+          appointmentBeforeUpdate.organization_id,
 
-      event_type:
-        "appointment_no_show",
+        event_type:
+          "appointment_no_show",
 
-      lead_id:
-        appointmentBeforeUpdate.lead_id,
+        lead_id:
+          appointmentBeforeUpdate.lead_id,
 
-      contact_id: null,
+        contact_id: null,
 
-      appointment_id:
-        appointmentBeforeUpdate.id,
+        appointment_id:
+          appointmentBeforeUpdate.id,
 
-      estimate_id: null,
+        estimate_id: null,
 
-      job_id: null,
+        job_id: null,
 
-      payment_id: null,
+        payment_id: null,
 
-      review_id: null,
+        review_id: null,
 
-      payload: {
-        appointment: {
-          appointment_id:
-            appointmentBeforeUpdate.id,
+        payload: {
+          appointment: {
+            appointment_id:
+              appointmentBeforeUpdate.id,
 
-          organization_id:
-            appointmentBeforeUpdate.organization_id,
+            organization_id:
+              appointmentBeforeUpdate.organization_id,
 
-          lead_id:
-            appointmentBeforeUpdate.lead_id,
+            lead_id:
+              appointmentBeforeUpdate.lead_id,
 
-          title:
-            appointmentBeforeUpdate.title,
+            title:
+              appointmentBeforeUpdate.title,
 
-          appointment_type:
-            appointmentBeforeUpdate.appointment_type,
+            appointment_type:
+              appointmentBeforeUpdate.appointment_type,
 
-          status: "no_show",
+            status: "no_show",
 
-          start_at:
-            appointmentBeforeUpdate.start_at,
+            start_at:
+              appointmentBeforeUpdate.start_at,
 
-          end_at:
-            appointmentBeforeUpdate.end_at,
+            end_at:
+              appointmentBeforeUpdate.end_at,
 
-          notes:
-            appointmentBeforeUpdate.notes,
+            notes:
+              appointmentBeforeUpdate.notes,
+          },
+
+          lead: {
+            lead_id:
+              lead?.id ||
+              appointmentBeforeUpdate.lead_id ||
+              null,
+
+            customer_name:
+              customerName || "there",
+
+            customer_phone:
+              lead?.phone || "",
+
+            customer_email:
+              lead?.email || "",
+
+            service_interest:
+              lead?.service_interest || "",
+          },
         },
 
-        lead: {
-          lead_id:
-            lead?.id ||
-            appointmentBeforeUpdate.lead_id ||
-            null,
+        status: "pending",
+      })
+      .select("id")
+      .single();
 
-          customer_name:
-            customerName || "there",
+    if (error) {
+      console.error(
+        "Create no-show automation event error:",
+        error
+      );
 
-          customer_phone:
-            lead?.phone || "",
+      setErrorMessage(
+        `Appointment marked as no-show, but automation event failed: ${error.message}`
+      );
 
-          customer_email:
-            lead?.email || "",
+      return;
+    }
 
-          service_interest:
-            lead?.service_interest || "",
-        },
-      },
-
-      status: "pending",
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error(
-      "Create no-show automation event error:",
-      error
+    console.log(
+      "No-show automation event created:",
+      automationEvent.id
     );
 
-    setErrorMessage(
-      `Appointment marked as no-show, but automation event failed: ${error.message}`
-    );
+    const dispatchResponse =
+      await fetch(
+        "/api/automation/events",
+        {
+          method: "POST",
 
-    return;
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            event_id:
+              automationEvent.id,
+
+            organization_id:
+              appointmentBeforeUpdate.organization_id,
+          }),
+        }
+      );
+
+    if (!dispatchResponse.ok) {
+      const dispatchText =
+        await dispatchResponse.text();
+
+      console.error(
+        "No-show automation dispatch failed:",
+        dispatchText
+      );
+
+      setErrorMessage(
+        `Appointment marked as no-show, but automation dispatch failed: ${dispatchText}`
+      );
+
+      return;
+    }
+
+    console.log(
+      "No-show automation dispatched successfully:",
+      automationEvent.id
+    );
   }
-
-  const dispatchResponse =
-    await fetch(
-      "/api/automation/events",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          event_id:
-            automationEvent.id,
-
-          organization_id:
-            appointmentBeforeUpdate.organization_id,
-        }),
-      }
-    );
-
-  if (!dispatchResponse.ok) {
-    const dispatchText =
-      await dispatchResponse.text();
-
-    console.error(
-      "No-show automation dispatch failed:",
-      dispatchText
-    );
-
-    setErrorMessage(
-      `Appointment marked as no-show, but automation dispatch failed: ${dispatchText}`
-    );
-
-    return;
-  }
-
-  console.log(
-    "No-show automation dispatched successfully:",
-    automationEvent.id
-  );
-}
 
   async function handleEditAppointment(
     event: FormEvent<HTMLFormElement>
@@ -1689,6 +1744,52 @@ async function handleStatusChange(
     (_, index) =>
       calendarStartHour + index
   );
+
+  /*
+   * IMPORTANT:
+   * The initial server render and initial browser
+   * render both stop here with the same deterministic
+   * loading shell.
+   *
+   * Once mounted, the real calendar renders.
+   */
+  if (!mounted || !currentDate) {
+    return (
+      <div className="min-h-screen bg-[#f7f8fa] text-slate-900">
+        <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Schedule
+                </span>
+              </div>
+
+              <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+                Appointments
+              </h1>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Manage estimates, service calls,
+                consultations, and your team&apos;s
+                schedule.
+              </p>
+            </div>
+
+            <div className="h-11 w-44 animate-pulse rounded-xl bg-slate-200" />
+          </div>
+
+          <div className="mb-4 h-16 animate-pulse rounded-2xl border border-slate-200 bg-white shadow-sm" />
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="h-[900px] animate-pulse bg-slate-50" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f8fa] text-slate-900">
