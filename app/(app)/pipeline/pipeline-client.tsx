@@ -332,11 +332,16 @@ export default function PipelineClient({
         );
 
         if (!response.ok) {
-          console.error(
-            "Lost lead reactivation failed from pipeline:",
-            responseData
-          );
-        } else {
+  console.error(
+    "Lost lead reactivation failed from pipeline:",
+    {
+      status: response.status,
+      statusText: response.statusText,
+      responseData,
+      responseText,
+    }
+  );
+} else {
           console.log(
             "Lost lead reactivation started successfully from pipeline:",
             responseData
